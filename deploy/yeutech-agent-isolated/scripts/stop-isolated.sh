@@ -4,7 +4,7 @@ set -eu
 PROJECT_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 RUNTIME_ROOT="${YEUTECH_AGENT_RUNTIME_ROOT:-$PROJECT_ROOT/.runtime}"
 
-for name in opencode bridge; do
+for name in bff opencode bridge; do
   pid_file="$RUNTIME_ROOT/pids/$name.pid"
   [ -f "$pid_file" ] || continue
   pid="$(cat "$pid_file")"

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "bff": "node src/agent-bff.mjs",
     "bridge": "node src/nas-gateway-bridge.mjs",
     "generate-config": "node src/generate-opencode-config.mjs"
   },
