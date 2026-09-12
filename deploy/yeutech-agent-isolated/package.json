@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "migration:manifest": "node scripts/create-migration-manifest.mjs",
     "bff": "node src/agent-bff.mjs",
+    "migration": "node src/migration-service.mjs",
     "bridge": "node src/nas-gateway-bridge.mjs",
     "generate-config": "node src/generate-opencode-config.mjs"
   },

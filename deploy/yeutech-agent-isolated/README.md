@@ -30,6 +30,39 @@ npm --prefix web run dev -- --port 18140
 
 然后用 Chrome 打开 `http://127.0.0.1:18140/`。Vite 将 `/api/agent` 转发到本地 `127.0.0.1:18141`。旧的白底三栏概念稿已废弃，当前视觉以门户 Codex 工作台为准，记录在 `design/design-spec.md` 和 `design/fidelity-ledger.md`。
 
+## 历史项目和会话恢复
+
+2026-09-12 的隔离迁移样本固定读取以下本地快照，不连接 NAS 或正式 `codex.sqlite`：
+
+```text
+/Users/fangjialiang/Documents/家庭网络中枢项目/04_工具与运维/本地备份/codex迁移源数据/2026-09-12/
+├── projects/       # NAS 项目空间副本，保留 .git、隐藏目录和独立会话附件
+├── conversations/  # 工作台数据、导入包、附件和运行记录副本
+├── database/       # 原始 WAL 文件集和通过 integrity_check 的一致性 SQLite 副本
+└── metadata/       # 项目盘点和逐文件 SHA-256 清单
+```
+
+生成或刷新本地快照清单：
+
+```bash
+npm run migration:manifest -- \
+  '/Users/fangjialiang/Documents/家庭网络中枢项目/04_工具与运维/本地备份/codex迁移源数据/2026-09-12'
+```
+
+启动只读历史服务（要求隔离 OpenCode `18130` 已运行）：
+
+```bash
+YEUTECH_MIGRATION_DATABASE='/Users/fangjialiang/Documents/家庭网络中枢项目/04_工具与运维/本地备份/codex迁移源数据/2026-09-12/database/codex-20260912-062144.sqlite' \
+YEUTECH_MIGRATION_PROJECTS_ROOT='/Users/fangjialiang/Documents/家庭网络中枢项目/04_工具与运维/本地备份/codex迁移源数据/2026-09-12/projects' \
+./scripts/start-migration.sh
+```
+
+历史正文始终只读。点击“继续此会话”时，服务创建一个新的 OpenCode session，并使用 `noReply: true` 写入最多 24,000 字符的迁移上下文，因此不会自动调用模型；映射保存在 `.runtime/migration/mappings.json`，再次继续同一旧会话会复用新 session。旧 thread/session ID、隐藏消息、推理、工具句柄、审批、登录态和运行中进程不会被伪装成已恢复。
+
+当前只完成本机单用户可用链路。用户、项目权限和多租户隔离要等 NAS 可用后再接门户验证；浏览器不能传入数据库、项目根目录或 OpenCode workspace 的任意路径。
+
+当前快照盘点为 11 个项目分组、64 个去重历史会话和 3,236 条可见历史消息；其中门户原生 63 个会话/1,726 条消息，旧导入 8 个会话/1,510 条事件。数字同时写入 `metadata/project-inventory.json`，后续换快照时应重新生成，不在前端写死。
+
 连接真实本地 CLIProxyAPI 时，只提供上游地址和密钥文件，不把密钥写入前端、配置文件或命令参数：
 
 ```bash
