@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim AS web-builder
 WORKDIR /build/web
 COPY web/package.json web/package-lock.json ./
-RUN npm ci
+RUN npm ci --registry=https://registry.npmjs.org
 COPY web/ ./
 RUN npm run build
 
