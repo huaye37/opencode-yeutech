@@ -38,7 +38,7 @@ Compose 的关键边界：
 - OpenCode 仅监听容器内 `127.0.0.1:18130`；migration 仅监听容器内 `127.0.0.1:18142`；BFF 和静态前端监听 `0.0.0.0:18140`。
 - 现有 Codex 的 `18110`、进程、数据库和项目空间不在脚本操作范围内。
 - OpenCode 使用独立的 XDG 配置、数据、缓存和状态目录。
-- 项目工作区由 BFF 固定为 `/projects/ryan`，挂载为文件系统只读；OpenCode 权限同时禁用 `edit`、`bash` 和 `external_directory`。
+- 项目工作区由 BFF 按门户用户固定映射：`lucian` 使用 `/projects/lucian`，`ryan` 使用 `/projects/ryan`；历史项目与会话只从 Ryan 的迁移快照恢复。目录挂载为文件系统只读，OpenCode 权限同时禁用 `edit`、`bash` 和 `external_directory`。
 - 浏览器侧只能接同源 BFF。BFF 把 OpenCode 请求固定到 Ryan 工作区，并拒绝 Shell、Command、Share 等未授权接口。
 - 当前 BFF 是单用户、单项目隔离样本，不代表多租户已完成；门户接入前还需要把门户用户和项目权限映射成服务端可验证的会话归属。
 - 模型层固定复用 NAS 现有 CLIProxyAPI，模型目录在容器启动时动态读取，不在前端写死。

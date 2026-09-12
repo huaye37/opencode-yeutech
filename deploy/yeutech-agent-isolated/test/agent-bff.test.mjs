@@ -34,7 +34,7 @@ async function withBff(upstreamHandler, run, options = {}) {
   const upstreamURL = await listen(upstream);
   const bff = createAgentBff({
     identitySecret: IDENTITY_SECRET,
-    users: [{ portalUserId: 3, username: "ryan", workspace: WORKSPACE }],
+    users: [{ portalUserId: 3, username: "ryan", workspace: WORKSPACE, migrationAccess: true }],
     upstreamURL,
     upstreamUsername: "yeutech-agent",
     upstreamPassword: PASSWORD,
@@ -99,6 +99,53 @@ test("replaces caller directory and injects OpenCode Basic auth", async () => {
     assert.equal(response.headers.get("x-next-cursor"), "cursor-2");
     assert.deepEqual(await response.json(), []);
   });
+});
+
+test("maps each authorized portal user to an isolated workspace", async () => {
+  const seenDirectories = [];
+  await withBff((request, response) => {
+    seenDirectories.push(new URL(request.url, "http://127.0.0.1").searchParams.get("directory"));
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("[]");
+  }, async (baseURL) => {
+    const lucian = identity({ sub: 1, username: "lucian" });
+    assert.equal((await fetch(`${baseURL}/api/agent/session`, { headers: identityHeaders(lucian) })).status, 200);
+    assert.equal((await fetch(`${baseURL}/api/agent/session`, { headers: identityHeaders() })).status, 200);
+    assert.deepEqual(seenDirectories, ["/projects/lucian", WORKSPACE]);
+  }, {
+    users: [
+      { portalUserId: 1, username: "lucian", workspace: "/projects/lucian" },
+      { portalUserId: 3, username: "ryan", workspace: WORKSPACE },
+    ],
+  });
+});
+
+test("keeps Ryan migration history hidden from other authorized users", async () => {
+  let migrationHits = 0;
+  const migration = http.createServer((_request, response) => {
+    migrationHits += 1;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end('[{"id":"ryan-project"}]');
+  });
+  const migrationURL = await listen(migration);
+  try {
+    await withBff((_request, response) => response.end(), async (baseURL) => {
+      const lucianHeaders = identityHeaders(identity({ sub: 1, username: "lucian" }));
+      assert.deepEqual(await fetch(`${baseURL}/api/migration/projects`, { headers: lucianHeaders }).then((response) => response.json()), []);
+      assert.equal((await fetch(`${baseURL}/api/migration/conversations/ryan-thread`, { headers: lucianHeaders })).status, 403);
+      assert.equal(migrationHits, 0);
+      assert.deepEqual(await fetch(`${baseURL}/api/migration/projects`, { headers: identityHeaders() }).then((response) => response.json()), [{ id: "ryan-project" }]);
+      assert.equal(migrationHits, 1);
+    }, {
+      migrationURL,
+      users: [
+        { portalUserId: 1, username: "lucian", workspace: "/projects/lucian" },
+        { portalUserId: 3, username: "ryan", workspace: WORKSPACE, migrationAccess: true },
+      ],
+    });
+  } finally {
+    await close(migration);
+  }
 });
 
 test("streams OpenCode SSE responses", async () => {

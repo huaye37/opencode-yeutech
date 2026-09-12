@@ -10,7 +10,7 @@ key_file="${YEUTECH_CLI_PROXY_KEY_FILE:-/run/secrets/cliproxy.key}"
 test -r "$key_file" || { echo "CLIProxyAPI key file is not readable: $key_file" >&2; exit 1; }
 migration_source="${YEUTECH_MIGRATION_DATABASE:?YEUTECH_MIGRATION_DATABASE is required}"
 test -r "$migration_source" || { echo "Migration database is not readable." >&2; exit 1; }
-test -d "${YEUTECH_AGENT_WORKSPACE:?YEUTECH_AGENT_WORKSPACE is required}" || { echo "Ryan workspace is not mounted." >&2; exit 1; }
+test -d "${YEUTECH_AGENT_WORKSPACE:?YEUTECH_AGENT_WORKSPACE is required}" || { echo "Agent workspace is not mounted." >&2; exit 1; }
 
 mkdir -p "$runtime_root/config" "$runtime_root/logs" "$runtime_root/migration" "$runtime_root/secrets" \
   "$runtime_root/xdg/config" "$runtime_root/xdg/data" "$runtime_root/xdg/cache" "$runtime_root/xdg/state"
@@ -37,7 +37,7 @@ export OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-yeutech-agent}"
 export OPENCODE_SERVER_PASSWORD="$(tr -d '\r\n' < "$password_file")"
 export YEUTECH_AGENT_IDENTITY_SECRET="$(tr -d '\r\n' < "$identity_file")"
 if [ -z "${YEUTECH_AGENT_USERS_JSON:-}" ]; then
-  YEUTECH_AGENT_USERS_JSON='[{"portalUserId":3,"username":"ryan","workspace":"/projects/ryan"}]'
+  YEUTECH_AGENT_USERS_JSON='[{"portalUserId":1,"username":"lucian","workspace":"/projects/lucian"},{"portalUserId":3,"username":"ryan","workspace":"/projects/ryan","migrationAccess":true}]'
 fi
 export YEUTECH_AGENT_USERS_JSON
 export YEUTECH_CLI_PROXY_KEY="$(tr -d '\r\n' < "$key_file")"

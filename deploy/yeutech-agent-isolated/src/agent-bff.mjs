@@ -177,6 +177,16 @@ export function createAgentBff(options) {
         return;
       }
       if (incoming.pathname === "/api/migration" || incoming.pathname.startsWith("/api/migration/")) {
+        if (identity.user.migrationAccess !== true) {
+          if (request.method === "GET" && ["/api/migration/projects", "/api/migration/conversations"].includes(incoming.pathname)) {
+            response.writeHead(200, { "content-type": "application/json" });
+            response.end("[]");
+            return;
+          }
+          response.writeHead(403, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: { message: "Historical migration data is not enabled for this user" } }));
+          return;
+        }
         await proxy(request, response, { prefix: "/api/migration", upstream: migration, bodyLimit });
         return;
       }
