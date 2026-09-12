@@ -19,6 +19,17 @@
 npm test
 ```
 
+## 本地 AI 工作台
+
+这个前端只用于本地界面和交互验证，不读取 NAS，不连接线上 Codex 数据库。分别启动 Mock Agent API 和 Vite：
+
+```bash
+npm --prefix web run mock
+npm --prefix web run dev -- --port 18140
+```
+
+然后用 Chrome 打开 `http://127.0.0.1:18140/`。Vite 将 `/api/agent` 转发到本地 `127.0.0.1:18141`。视觉规范、概念稿和实现对照分别位于 `design/design-spec.md`、`design/ai-workbench-concept-v1.png` 和 `design/fidelity-ledger.md`。
+
 ## Mac mini 独立部署
 
 目标目录：
