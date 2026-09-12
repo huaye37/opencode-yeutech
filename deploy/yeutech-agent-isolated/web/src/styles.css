@@ -62,6 +62,9 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
 .mode-notice svg { color: var(--primary); flex: 0 0 auto; }
 .mode-notice strong { color: #3f5168; font-weight: 600; }
 .messages { min-height: 0; flex: 1; overflow: auto; padding: 26px clamp(24px,7vw,106px) 170px; scroll-behavior: smooth; }
+.load-older { display: block; margin: 0 auto 20px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,.74); padding: 7px 14px; color: var(--muted); font-size: 11px; }
+.load-older:hover { border-color: #a7c8ee; color: var(--accent); }
+.load-older:disabled { opacity: .58; }
 .empty-conversation { min-height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: var(--muted); text-align: center; font-size: 12px; }
 .empty-conversation strong { color: var(--text); font-size: 15px; }
 .empty-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: var(--primary-soft); color: var(--primary); }

@@ -7,9 +7,17 @@ async function request(path, options) {
   return response.json();
 }
 
+async function requestMessages(sessionID, before) {
+  const query = new URLSearchParams({ limit: "200" });
+  if (before) query.set("before", before);
+  const response = await fetch(`${base}/session/${sessionID}/message?${query}`);
+  if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+  return { records: await response.json(), cursor: response.headers.get("x-next-cursor") };
+}
+
 export const agentApi = {
   sessions: () => request("/session"),
-  messages: (sessionID) => request(`/session/${sessionID}/message`),
+  messages: requestMessages,
   providers: () => request("/config/providers"),
   status: () => request("/session/status"),
   createSession: (title) => request("/session", {

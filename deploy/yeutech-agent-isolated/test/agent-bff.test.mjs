@@ -63,14 +63,17 @@ test("replaces caller directory and injects OpenCode Basic auth", async () => {
     assert.equal(url.searchParams.get("directory"), WORKSPACE);
     assert.equal(url.searchParams.has("workspace"), false);
     assert.equal(url.searchParams.has("path"), false);
+    assert.equal(url.searchParams.get("limit"), "200");
+    assert.equal(url.searchParams.get("before"), "cursor-1");
     assert.equal(request.headers.authorization, `Basic ${Buffer.from(`yeutech-agent:${PASSWORD}`).toString("base64")}`);
-    response.writeHead(200, { "content-type": "application/json" });
+    response.writeHead(200, { "content-type": "application/json", "x-next-cursor": "cursor-2" });
     response.end("[]");
   }, async (baseURL) => {
-    const response = await fetch(`${baseURL}/session?directory=/tmp/escape&workspace=bad&path=/`, {
+    const response = await fetch(`${baseURL}/session?directory=/tmp/escape&workspace=bad&path=/&limit=200&before=cursor-1`, {
       headers: { authorization: `Bearer ${TOKEN}` },
     });
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-next-cursor"), "cursor-2");
     assert.deepEqual(await response.json(), []);
   });
 });
