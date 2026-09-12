@@ -63,16 +63,20 @@ function publicProject(project, conversationCount) {
   };
 }
 
-export function createMigrationCatalog(databaseFile, projectsRoot) {
+export function createMigrationCatalog(databaseFile, projectsRoot, selection = {}) {
   if (!path.isAbsolute(databaseFile)) throw new Error("Migration database must be an absolute path");
+  const selectedUserID = Number.isInteger(selection.userID) && selection.userID > 0 ? selection.userID : null;
+  const selectedOwnerDirectory = String(selection.ownerDirectory || "").trim();
+  if (selectedUserID == null) throw new Error("Migration userID must be a positive integer");
+  if (!selectedOwnerDirectory) throw new Error("Migration ownerDirectory is required");
   const database = new DatabaseSync(databaseFile, { readOnly: true });
   const linkedRuntimeIDs = new Set(database.prepare(`
     SELECT runtime_portal_thread_id AS id FROM codex_imported_threads
     WHERE runtime_portal_thread_id IS NOT NULL
   `).all().map((row) => String(row.id)));
-  const projectRows = database.prepare("SELECT user_id, projects_json FROM portal_codex_project_snapshots").all();
+  const projectRows = database.prepare("SELECT user_id, projects_json FROM portal_codex_project_snapshots WHERE user_id = ?").all(selectedUserID);
   const fileProjects = projectsRoot && path.isAbsolute(projectsRoot) ? readdirSync(projectsRoot, { withFileTypes: true })
-    .filter((owner) => owner.isDirectory() && owner.name !== "#recycle")
+    .filter((owner) => owner.isDirectory() && owner.name === selectedOwnerDirectory)
     .flatMap((owner) => readdirSync(path.join(projectsRoot, owner.name), { withFileTypes: true })
       .filter((project) => project.isDirectory() && project.name !== ".独立会话附件")
       .map((project) => ({ name: project.name, owner: owner.name }))) : [];
@@ -94,12 +98,14 @@ export function createMigrationCatalog(databaseFile, projectsRoot) {
       FROM portal_codex_threads thread
       LEFT JOIN portal_codex_messages message ON message.thread_id = thread.id
       GROUP BY thread.id ORDER BY thread.updated_at DESC
-    `).all().filter((row) => !linkedRuntimeIDs.has(String(row.id))).map((row) => ({
+    `).all().filter((row) => Number(row.user_id) === selectedUserID && !linkedRuntimeIDs.has(String(row.id))).map((row) => ({
       id: migrationID("portal", row.id),
       sourceThreadId: String(row.codex_thread_id),
       projectId: row.project_id ? String(row.project_id) : `standalone:${row.user_id}`,
       owner: `本地账号 ${row.user_id}`,
       title: String(row.title || "新会话"),
+      model: String(row.model || ""),
+      reasoningEffort: String(row.reasoning_effort || ""),
       messageCount: Number(row.message_count),
       updatedAt: Number(row.updated_at),
       archived: row.archived_at != null,
@@ -111,7 +117,7 @@ export function createMigrationCatalog(databaseFile, projectsRoot) {
       FROM codex_imported_threads thread
       JOIN codex_session_imports job ON job.id = thread.import_id
       ORDER BY thread.updated_at DESC
-    `).all().map((row) => ({
+    `).all().filter((row) => Number(row.user_id) === selectedUserID).map((row) => ({
       id: migrationID("imported", row.id),
       sourceThreadId: String(row.source_thread_id),
       projectId: String(row.project_id),
@@ -163,7 +169,7 @@ export function createMigrationCatalog(databaseFile, projectsRoot) {
     if (!parsed) return null;
     if (parsed.kind === "portal") {
       const row = database.prepare("SELECT * FROM portal_codex_threads WHERE id = ?").get(parsed.id);
-      if (!row || linkedRuntimeIDs.has(String(row.id))) return null;
+      if (!row || Number(row.user_id) !== selectedUserID || linkedRuntimeIDs.has(String(row.id))) return null;
       return {
         id: value,
         sourceThreadId: String(row.codex_thread_id),
@@ -175,7 +181,7 @@ export function createMigrationCatalog(databaseFile, projectsRoot) {
       };
     }
     const row = database.prepare("SELECT * FROM codex_imported_threads WHERE id = ?").get(parsed.id);
-    return row ? {
+    return row && Number(row.user_id) === selectedUserID ? {
       id: value,
       sourceThreadId: String(row.source_thread_id),
       projectId: String(row.project_id),
@@ -287,7 +293,10 @@ function migrationPrompt(conversation, context) {
 }
 
 export function createMigrationService(options) {
-  const catalog = options.catalog ?? createMigrationCatalog(options.databaseFile, options.projectsRoot);
+  const catalog = options.catalog ?? createMigrationCatalog(options.databaseFile, options.projectsRoot, {
+    userID: options.userID,
+    ownerDirectory: options.ownerDirectory,
+  });
   const allowedOrigin = options.allowedOrigin ?? "http://127.0.0.1:18140";
   return http.createServer(async (request, response) => {
     response.setHeader("x-content-type-options", "nosniff");
@@ -377,6 +386,8 @@ export function createMigrationService(options) {
 async function main() {
   const runtimeRoot = process.env.YEUTECH_AGENT_RUNTIME_ROOT ?? path.resolve(import.meta.dirname, "../.runtime");
   const passwordFile = process.env.OPENCODE_SERVER_PASSWORD_FILE ?? path.join(runtimeRoot, "secrets/opencode.password");
+  const selectedUserID = Number(process.env.YEUTECH_MIGRATION_USER_ID ?? 3);
+  if (!Number.isInteger(selectedUserID) || selectedUserID < 1) throw new Error("YEUTECH_MIGRATION_USER_ID must be a positive integer");
   const server = createMigrationService({
     databaseFile: process.env.YEUTECH_MIGRATION_DATABASE,
     projectsRoot: process.env.YEUTECH_MIGRATION_PROJECTS_ROOT,
@@ -386,6 +397,8 @@ async function main() {
     upstreamUsername: process.env.OPENCODE_SERVER_USERNAME ?? "yeutech-agent",
     upstreamPassword: (process.env.OPENCODE_SERVER_PASSWORD ?? await readFile(passwordFile, "utf8")).trim(),
     allowedOrigin: process.env.YEUTECH_MIGRATION_ALLOWED_ORIGIN ?? "http://127.0.0.1:18140",
+    userID: selectedUserID,
+    ownerDirectory: process.env.YEUTECH_MIGRATION_OWNER_DIRECTORY ?? "ryan",
   });
   const port = Number(process.env.YEUTECH_MIGRATION_PORT ?? 18142);
   await new Promise((resolve, reject) => {

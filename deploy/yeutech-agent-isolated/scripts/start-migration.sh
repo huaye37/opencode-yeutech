@@ -25,6 +25,8 @@ fi
 mkdir -p "$RUNTIME_ROOT/logs" "$RUNTIME_ROOT/pids" "$RUNTIME_ROOT/migration"
 chmod 700 "$RUNTIME_ROOT/migration"
 export YEUTECH_AGENT_RUNTIME_ROOT="$RUNTIME_ROOT"
+export YEUTECH_MIGRATION_USER_ID="${YEUTECH_MIGRATION_USER_ID:-3}"
+export YEUTECH_MIGRATION_OWNER_DIRECTORY="${YEUTECH_MIGRATION_OWNER_DIRECTORY:-ryan}"
 nohup node "$PROJECT_ROOT/src/migration-service.mjs" > "$RUNTIME_ROOT/logs/migration.log" 2>&1 &
 migration_pid=$!
 echo "$migration_pid" > "$RUNTIME_ROOT/pids/migration.pid"

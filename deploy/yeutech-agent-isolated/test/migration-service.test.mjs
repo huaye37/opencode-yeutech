@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -25,33 +25,43 @@ async function fixture() {
   const database = new DatabaseSync(databaseFile);
   database.exec(`
     CREATE TABLE portal_codex_project_snapshots (user_id INTEGER PRIMARY KEY, projects_json TEXT NOT NULL, updated_at INTEGER NOT NULL);
-    CREATE TABLE portal_codex_threads (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, codex_thread_id TEXT NOT NULL, project_id TEXT, title TEXT, updated_at INTEGER, archived_at INTEGER);
+    CREATE TABLE portal_codex_threads (id TEXT PRIMARY KEY, user_id INTEGER, codex_thread_id TEXT NOT NULL, project_id TEXT, title TEXT, updated_at INTEGER, archived_at INTEGER);
     CREATE TABLE portal_codex_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, sequence INTEGER NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE codex_session_imports (id TEXT PRIMARY KEY, project_name TEXT NOT NULL);
-    CREATE TABLE codex_imported_threads (id TEXT PRIMARY KEY, import_id TEXT NOT NULL, user_id INTEGER NOT NULL, project_id TEXT NOT NULL, source_thread_id TEXT NOT NULL, title TEXT NOT NULL, context_markdown TEXT NOT NULL, message_count INTEGER NOT NULL, runtime_portal_thread_id TEXT, updated_at INTEGER NOT NULL, archived_at INTEGER);
+    CREATE TABLE codex_imported_threads (id TEXT PRIMARY KEY, import_id TEXT NOT NULL, user_id INTEGER, project_id TEXT NOT NULL, source_thread_id TEXT NOT NULL, title TEXT NOT NULL, context_markdown TEXT NOT NULL, message_count INTEGER NOT NULL, runtime_portal_thread_id TEXT, updated_at INTEGER NOT NULL, archived_at INTEGER);
     CREATE TABLE codex_imported_messages (id TEXT PRIMARY KEY, imported_thread_id TEXT NOT NULL, role TEXT, event_type TEXT, content_json TEXT NOT NULL, source_created_at TEXT, sequence INTEGER NOT NULL);
   `);
   database.prepare("INSERT INTO portal_codex_project_snapshots VALUES (?, ?, ?)").run(3, JSON.stringify([{ id: "project-one", name: "项目一", storage: "nas" }]), 1);
+  database.prepare("INSERT INTO portal_codex_project_snapshots VALUES (?, ?, ?)").run(4, JSON.stringify([{ id: "project-other", name: "其他用户项目", storage: "nas" }]), 1);
   database.prepare("INSERT INTO portal_codex_threads VALUES (?, ?, ?, ?, ?, ?, ?)").run("11111111-1111-1111-1111-111111111111", 3, "legacy-thread", "project-one", "旧会话", 20, null);
+  database.prepare("INSERT INTO portal_codex_threads VALUES (?, ?, ?, ?, ?, ?, ?)").run("44444444-4444-4444-4444-444444444444", 4, "other-thread", "project-other", "其他用户会话", 20, null);
+  database.prepare("INSERT INTO portal_codex_threads VALUES (?, ?, ?, ?, ?, ?, ?)").run("00000000-0000-0000-0000-000000000000", null, "orphan-thread", null, "无用户会话", 20, null);
   database.prepare("INSERT INTO portal_codex_messages VALUES (?, ?, ?, ?, ?, ?)").run("message-1", "11111111-1111-1111-1111-111111111111", "user", "历史问题", 1, 10);
   database.prepare("INSERT INTO portal_codex_messages VALUES (?, ?, ?, ?, ?, ?)").run("message-2", "11111111-1111-1111-1111-111111111111", "assistant", "历史回答", 2, 20);
   database.close();
-  return { databaseFile, directory };
+  const projectsRoot = path.join(directory, "projects");
+  await Promise.all([
+    mkdir(path.join(projectsRoot, "ryan", "项目一"), { recursive: true }),
+    mkdir(path.join(projectsRoot, "other", "其他目录项目"), { recursive: true }),
+    mkdir(path.join(projectsRoot, "orphan", "无用户目录项目"), { recursive: true }),
+  ]);
+  return { databaseFile, directory, projectsRoot };
 }
 
 test("reads projects and paged visible history from the SQLite copy", async () => {
   const item = await fixture();
-  const catalog = createMigrationCatalog(item.databaseFile);
+  const catalog = createMigrationCatalog(item.databaseFile, item.projectsRoot, { userID: 3, ownerDirectory: "ryan" });
   try {
     assert.deepEqual(catalog.listProjects(), [{
       id: "project-one",
       name: "项目一",
-      owner: "本地账号 3",
+      owner: "ryan 目录",
       storage: "NAS 项目本地副本",
-      availableLocally: false,
+      availableLocally: true,
       conversationCount: 1,
     }]);
     const conversation = catalog.listConversations()[0];
+    assert.equal(catalog.listConversations().length, 1);
     assert.equal(conversation.id, "portal:11111111-1111-1111-1111-111111111111");
     assert.deepEqual(catalog.page(conversation.id, null, 1), {
       records: [{ id: "portal-message-2", sequence: 2, role: "assistant", text: "历史回答", createdAt: 20, source: "历史工作台" }],
@@ -59,6 +69,16 @@ test("reads projects and paged visible history from the SQLite copy", async () =
     });
   } finally {
     catalog.close();
+    await rm(item.directory, { recursive: true });
+  }
+});
+
+test("requires an explicit user and owner directory for every migration catalog", async () => {
+  const item = await fixture();
+  try {
+    assert.throws(() => createMigrationCatalog(item.databaseFile, item.projectsRoot), /userID/);
+    assert.throws(() => createMigrationCatalog(item.databaseFile, item.projectsRoot, { userID: 3 }), /ownerDirectory/);
+  } finally {
     await rm(item.directory, { recursive: true });
   }
 });
@@ -89,6 +109,8 @@ test("blocks foreign origins and creates a mapped OpenCode continuation without 
     upstreamURL,
     upstreamUsername: "yeutech-agent",
     upstreamPassword: PASSWORD,
+    userID: 3,
+    ownerDirectory: "ryan",
   });
   const baseURL = await listen(migration);
   try {
