@@ -78,7 +78,7 @@ export function createMigrationCatalog(databaseFile, projectsRoot, selection = {
   const fileProjects = projectsRoot && path.isAbsolute(projectsRoot) ? readdirSync(projectsRoot, { withFileTypes: true })
     .filter((owner) => owner.isDirectory() && owner.name === selectedOwnerDirectory)
     .flatMap((owner) => readdirSync(path.join(projectsRoot, owner.name), { withFileTypes: true })
-      .filter((project) => project.isDirectory() && project.name !== ".独立会话附件")
+      .filter((project) => project.isDirectory() && project.name !== ".独立会话附件" && project.name !== "@eaDir")
       .map((project) => ({ name: project.name, owner: owner.name }))) : [];
   const projects = projectRows.flatMap((row) => json(row.projects_json, []).map((project) => {
     const local = fileProjects.find((item) => item.name === String(project.name));

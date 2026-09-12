@@ -42,6 +42,7 @@ async function fixture() {
   const projectsRoot = path.join(directory, "projects");
   await Promise.all([
     mkdir(path.join(projectsRoot, "ryan", "项目一"), { recursive: true }),
+    mkdir(path.join(projectsRoot, "ryan", "@eaDir"), { recursive: true }),
     mkdir(path.join(projectsRoot, "other", "其他目录项目"), { recursive: true }),
     mkdir(path.join(projectsRoot, "orphan", "无用户目录项目"), { recursive: true }),
   ]);
