@@ -103,6 +103,9 @@ test("blocks foreign origins and creates a mapped OpenCode continuation without 
     assert.equal(upstreamRequests[1].body.noReply, true);
     assert.match(upstreamRequests[1].body.parts[0].text, /历史问题/);
     assert.equal(JSON.parse(await readFile(path.join(item.directory, "mappings.json"), "utf8"))["portal:11111111-1111-1111-1111-111111111111"].sessionID, "ses_new");
+    const conversations = await fetch(`${baseURL}/conversations`, { headers: { origin: ORIGIN } }).then((value) => value.json());
+    assert.equal(conversations[0].runtimeSessionId, "ses_new");
+    assert.equal(typeof conversations[0].resumedAt, "number");
   } finally {
     await close(migration);
     await close(upstream);

@@ -1,6 +1,6 @@
 # YEUTECH OpenCode 隔离验证环境
 
-这是一套与线上 Codex 工作台并列、完全独立的 OpenCode Agent 后端样本。第一阶段只验证执行后端，不接门户、不配域名、不读取 `codex.sqlite`，也不挂载现有项目目录。
+这是一套与线上 Codex 工作台并列、完全独立的 OpenCode Agent 后端样本。第一阶段只验证执行后端，不接门户、不配域名、不读取线上 `codex.sqlite`，也不挂载线上项目目录。界面只读打开一份经过校验的本地快照，用来验证无痛接续。
 
 ## 隔离边界
 
@@ -57,11 +57,11 @@ YEUTECH_MIGRATION_PROJECTS_ROOT='/Users/fangjialiang/Documents/家庭网络中�
 ./scripts/start-migration.sh
 ```
 
-历史正文始终只读。点击“继续此会话”时，服务创建一个新的 OpenCode session，并使用 `noReply: true` 写入最多 24,000 字符的迁移上下文，因此不会自动调用模型；映射保存在 `.runtime/migration/mappings.json`，再次继续同一旧会话会复用新 session。旧 thread/session ID、隐藏消息、推理、工具句柄、审批、登录态和运行中进程不会被伪装成已恢复。
+历史正文始终只读。用户不需要点击额外的“继续此会话”：在原会话输入框第一次发送时，服务会静默创建或复用 OpenCode session，并使用 `noReply: true` 写入最多 24,000 字符的迁移上下文，然后再发送当前用户消息。映射保存在 `.runtime/migration/mappings.json`，页面始终保留原会话 ID 和原会话条目；不再额外显示对应的 OpenCode session。迁移 seed 只存在 OpenCode 内部，不作为用户消息显示。旧 thread/session ID、隐藏消息、推理、工具句柄、审批、登录态和运行中进程不会被伪装成已恢复。
 
 当前只完成本机单用户可用链路。用户、项目权限和多租户隔离要等 NAS 可用后再接门户验证；浏览器不能传入数据库、项目根目录或 OpenCode workspace 的任意路径。
 
-当前快照盘点为 11 个项目分组、64 个去重历史会话和 3,236 条可见历史消息；其中门户原生 63 个会话/1,726 条消息，旧导入 8 个会话/1,510 条事件。数字同时写入 `metadata/project-inventory.json`，后续换快照时应重新生成，不在前端写死。
+当前快照盘点为 11 个原始分组、64 个去重历史会话和 3,236 条可见历史消息；其中门户原生 63 个会话/1,726 条消息，旧导入 8 个会话/1,510 条事件。工作台将它们按门户信息整理为 7 个真实项目，其余未归属会话统一放在“独立会话”，不生成虚构项目。数字同时写入 `metadata/project-inventory.json`，后续换快照时应重新生成，不在前端写死。
 
 连接真实本地 CLIProxyAPI 时，只提供上游地址和密钥文件，不把密钥写入前端、配置文件或命令参数：
 

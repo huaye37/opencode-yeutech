@@ -319,7 +319,14 @@ export function createMigrationService(options) {
       }
       if (request.method === "GET" && incoming.pathname === "/conversations") {
         const projectID = incoming.searchParams.get("projectId");
-        const conversations = catalog.listConversations().filter((item) => !projectID || item.projectId === projectID);
+        const mappings = await readMappings(options.mappingFile);
+        const conversations = catalog.listConversations()
+          .filter((item) => !projectID || item.projectId === projectID)
+          .map((item) => ({
+            ...item,
+            runtimeSessionId: mappings[item.id]?.sessionID ?? null,
+            resumedAt: mappings[item.id]?.createdAt ?? null,
+          }));
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify(conversations));
         return;
