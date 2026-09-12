@@ -1,11 +1,19 @@
-# AI 工作台视觉规范 v1
+# AI 工作台视觉规范 v2
 
-源视觉稿：[`ai-workbench-concept-v1.png`](./ai-workbench-concept-v1.png)，原生尺寸 1586 × 992。
+当前规范不再使用 `ai-workbench-concept-v1.png`。它是已废弃的通用白底三栏概念稿，不得用于后续视觉验收。
 
-- 布局：60px 顶栏、310px 左栏、弹性对话区、390px 轨迹栏、40px 状态栏；右栏先于左栏在窄屏折叠。
-- 颜色：主画布纯白；侧栏 `#f7f9fc`；正文 `#172033`；次要文字 `#718096`；分隔线 `#e4e9f1`；强调色 `#1769ff`。
-- 字体：系统中文字体；控件 13px/500；正文 15–16px/1.75；标题 18px/650。
-- 容器：以开放画布和 1px 分隔线为主，不使用卡片网格；控件圆角 8–10px。
-- 图标：统一 1.8px 圆角线框，状态完成可用实心蓝色圆。
-- 动效：新消息淡入 160ms；轨迹进行态轻量旋转；遵循 `prefers-reduced-motion`。
-- 首屏文案锁定：`YEUTECH`、`AI 工作台`、`项目`、`会话`、`Project A`、`修复登录状态`、`整理模型目录`、`新会话`、`轨迹`、`上下文`、`计划`、`给 Agent 发送消息…`、`停止`、`发送`、`OpenCode · 已连接`。
+唯一视觉基线是现有门户 Codex 工作台：
+
+- `yeutech-home-platform/frontend/components/codex/codex-workbench-client.tsx`
+- `yeutech-home-platform/frontend/app/globals.css`
+- `yeutech-home-platform/frontend/components/portal/brand.tsx`
+
+实现约束：
+
+- 背景使用门户网格、蓝色与青绿环境光，不用纯白页面。
+- 顶部保留“AI 工作台 / 检查并恢复连接 / 返回门户”骨架。
+- 主区域是一个圆角玻璃 `command-stage`，内部为项目会话左栏和对话主区。
+- 执行轨迹、重试和错误进入消息流，不设独立右栏。
+- 输入器为底部液态玻璃控件，模型目录来自 CLIProxyAPI 动态返回。
+- 880px 以下折叠左栏；390 × 844 下不允许水平溢出，消息与输入器仍可用。
+- 运行态必须区分“CLIProxyAPI 已连通”、“模型账号授权不可用”和“真实模型回复成功”。

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -69,6 +70,25 @@ export function spawnNasRequest(route, options = {}) {
     ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target, remoteCurlCommand(route)],
     { stdio: ["pipe", "pipe", "pipe"] },
   );
+}
+
+export function spawnLocalRequest(route, options = {}) {
+  const baseURL = new URL(String(options.upstreamBaseURL).replace(/\/v1\/?$/, ""));
+  if (baseURL.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(baseURL.hostname)) {
+    throw new Error("Local CLIProxyAPI must use a loopback HTTP URL");
+  }
+  const token = String(options.upstreamToken ?? "").trim();
+  if (!token) throw new Error("Local CLIProxyAPI token is required");
+  const input = route.method === "POST" ? ["--data-binary", "@-"] : [];
+  const child = spawn("curl", [
+    "--silent", "--show-error", "--no-buffer", "--request", route.method,
+    "--header", "@/dev/fd/3", "--header", "Content-Type: application/json",
+    "--header", "Expect:", "--dump-header", "-", "--output", "-",
+    ...input,
+    new URL(route.path, baseURL).toString(),
+  ], { stdio: ["pipe", "pipe", "pipe", "pipe"] });
+  child.stdio[3].end(`Authorization: Bearer ${token}\n`);
+  return child;
 }
 
 function parseHeaderBlock(block) {
@@ -141,7 +161,9 @@ export function createGatewayBridge(options) {
     throw new Error("Bridge token must contain at least 24 characters");
   }
   const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
-  const spawnRequest = options.spawnRequest ?? ((route) => spawnNasRequest(route, options));
+  const spawnRequest = options.spawnRequest ?? (options.upstreamBaseURL
+    ? (route) => spawnLocalRequest(route, options)
+    : (route) => spawnNasRequest(route, options));
 
   return http.createServer(async (request, response) => {
     response.setHeader("x-content-type-options", "nosniff");
@@ -189,15 +211,22 @@ async function main() {
   const host = process.env.YEUTECH_AGENT_BRIDGE_HOST ?? "127.0.0.1";
   if (host !== "127.0.0.1" && host !== "::1") throw new Error("Bridge may only bind to loopback");
   const port = Number(process.env.YEUTECH_AGENT_BRIDGE_PORT ?? 18132);
+  const upstreamBaseURL = process.env.YEUTECH_CLI_PROXY_URL;
+  const upstreamKeyFile = process.env.YEUTECH_CLI_PROXY_KEY_FILE;
+  if (Boolean(upstreamBaseURL) !== Boolean(upstreamKeyFile)) {
+    throw new Error("YEUTECH_CLI_PROXY_URL and YEUTECH_CLI_PROXY_KEY_FILE must be set together");
+  }
   const server = createGatewayBridge({
     token: process.env.YEUTECH_AGENT_BRIDGE_TOKEN,
     sshTarget: process.env.YEUTECH_NAS_SSH_TARGET ?? "nas-local",
+    upstreamBaseURL,
+    upstreamToken: upstreamKeyFile ? await readFile(upstreamKeyFile, "utf8") : undefined,
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, resolve);
   });
-  process.stdout.write(`YEUTECH NAS bridge listening on http://${host}:${port}\n`);
+  process.stdout.write(`YEUTECH model bridge listening on http://${host}:${port} (${upstreamBaseURL ? "local CLIProxyAPI" : "NAS CLIProxyAPI"})\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

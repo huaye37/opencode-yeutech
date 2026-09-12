@@ -11,7 +11,7 @@
 - bridge 只转发 `/v1/models` 和 `/v1/chat/completions`，要求独立 Bearer token，不保存或输出 NAS API Key。
 - 浏览器侧只能接 Agent BFF。BFF 使用独立 Bearer token，把所有 OpenCode 请求固定到样本工作区，并拒绝 Shell、Command、Share 等未授权接口。
 - 当前 BFF 是单用户、单项目隔离样本，不代表多租户已完成；门户接入前还需要把门户用户和项目权限映射成服务端可验证的会话归属。
-- NAS API Key 只在 NAS 本机由固定路径读取；当前 SSH bridge 是隔离验证手段，不是最终生产网络架构。
+- 模型层固定使用现有 CLIProxyAPI；工作台、BFF 和会话协议不绑定具体地址。本地验证仅允许 loopback HTTP，部署时再切换受控的 NAS 地址。
 
 ## 本地检查
 
@@ -28,7 +28,19 @@ npm --prefix web run mock
 npm --prefix web run dev -- --port 18140
 ```
 
-然后用 Chrome 打开 `http://127.0.0.1:18140/`。Vite 将 `/api/agent` 转发到本地 `127.0.0.1:18141`。视觉规范、概念稿和实现对照分别位于 `design/design-spec.md`、`design/ai-workbench-concept-v1.png` 和 `design/fidelity-ledger.md`。
+然后用 Chrome 打开 `http://127.0.0.1:18140/`。Vite 将 `/api/agent` 转发到本地 `127.0.0.1:18141`。旧的白底三栏概念稿已废弃，当前视觉以门户 Codex 工作台为准，记录在 `design/design-spec.md` 和 `design/fidelity-ledger.md`。
+
+连接真实本地 CLIProxyAPI 时，只提供上游地址和密钥文件，不把密钥写入前端、配置文件或命令参数：
+
+```bash
+YEUTECH_CLI_PROXY_URL=http://127.0.0.1:8317/v1 \
+YEUTECH_CLI_PROXY_KEY_FILE=/absolute/path/to/cliproxy.key \
+./scripts/start-isolated.sh
+
+YEUTECH_AGENT_WEB_TARGET=http://127.0.0.1:18131 \
+YEUTECH_AGENT_BFF_TOKEN_FILE=../.runtime/secrets/portal.token \
+npm --prefix web run dev
+```
 
 ## Mac mini 独立部署
 
@@ -59,8 +71,8 @@ npm --prefix web run dev -- --port 18140
 
 1. bridge 匿名和错误 token 请求返回 401。
 2. OpenCode 匿名请求返回 401，且只绑定 loopback。
-3. 动态对话模型数量与 NAS 当前目录过滤结果一致。
-4. 默认模型 `gpt-5.6-sol` 能真实回复并稳定透传 SSE。
+3. 动态对话模型数量与 CLIProxyAPI 当前目录过滤结果一致。
+4. 选中的 CLIProxyAPI 模型能真实回复并稳定透传 SSE；模型目录成功不代表账号授权可用。
 5. 客户端中止时终止对应 SSH/curl 子进程。
 6. OpenCode 重启后会话可以从独立数据目录恢复。
 7. 全程不访问 `18110`、线上 `codex.sqlite` 或现有项目目录。

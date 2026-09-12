@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
+import http from "node:http";
 import test from "node:test";
 import { createGatewayBridge } from "../src/nas-gateway-bridge.mjs";
 
@@ -66,6 +67,38 @@ test("streams an allowed upstream response", async () => {
       "data: [DONE]\n\n",
     ]),
   });
+});
+
+test("forwards to a loopback CLIProxyAPI without exposing its key in curl arguments", async () => {
+  let authorization = "";
+  let receivedBody = "";
+  const upstream = await new Promise((resolve) => {
+    const server = http.createServer(async (request, response) => {
+      authorization = request.headers.authorization ?? "";
+      for await (const chunk of request) receivedBody += chunk;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+    });
+    server.listen(0, "127.0.0.1", () => resolve(server));
+  });
+  try {
+    await withServer(async (baseURL) => {
+      const response = await fetch(`${baseURL}/v1/chat/completions`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "test-model", messages: [] }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ok: true });
+    }, {
+      upstreamBaseURL: `http://127.0.0.1:${upstream.address().port}/v1`,
+      upstreamToken: "local-upstream-secret",
+    });
+    assert.equal(authorization, "Bearer local-upstream-secret");
+    assert.equal(JSON.parse(receivedBody).model, "test-model");
+  } finally {
+    await new Promise((resolve) => upstream.close(resolve));
+  }
 });
 
 test("enforces request body limit", async () => {
