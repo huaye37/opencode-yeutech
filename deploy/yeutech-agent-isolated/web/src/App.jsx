@@ -200,7 +200,7 @@ export function App() {
       const activeConversation = nextConversations.find((item) => item.id === nextSelected);
       const visibleProjects = nextProjects.filter((item) => !item.id.startsWith("standalone:"));
       setProjects(visibleProjects); setConversations(nextConversations); setRuntimeSessions(nextRuntime); setStandaloneSessions(nextStandalone); setSelected(nextSelected);
-      setSelectedProject(activeConversation?.projectId.startsWith("standalone:") ? "" : activeConversation?.projectId || visibleProjects[0]?.id || "");
+      setSelectedProject(activeConversation && !activeConversation.projectId.startsWith("standalone:") ? activeConversation.projectId : "");
       const activeRuntimeID = nextRuntime[nextSelected] || nextSelected;
       setRunning(Boolean(states[activeRuntimeID])); setStatus(readableStatus(states[activeRuntimeID]));
     } catch (error) {
