@@ -27,6 +27,7 @@ Compose 的关键边界：
 
 - `/volume2/codex项目空间:/projects:ro`
 - `/volume1/docker/yeutech-agent/data:/data:ro`
+- 首次启动把固定日期的只读 SQLite 快照复制到独立 runtime，供 SQLite 创建必要的 WAL/SHM；不会修改源副本
 - CLIProxyAPI key 只读挂载到 `/run/secrets/cliproxy.key`
 - 容器使用 NAS host 网络，只通过宿主回环地址 `http://127.0.0.1:18319` 复用 `novel-ai-proxy`
 - OpenCode `18131` 和 migration `18142` 仅监听 NAS loopback，不向局域网开放

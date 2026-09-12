@@ -8,13 +8,26 @@ bff_port="${YEUTECH_AGENT_BFF_PORT:-18140}"
 key_file="${YEUTECH_CLI_PROXY_KEY_FILE:-/run/secrets/cliproxy.key}"
 
 test -r "$key_file" || { echo "CLIProxyAPI key file is not readable: $key_file" >&2; exit 1; }
-test -r "${YEUTECH_MIGRATION_DATABASE:?YEUTECH_MIGRATION_DATABASE is required}" || { echo "Migration database is not readable." >&2; exit 1; }
+migration_source="${YEUTECH_MIGRATION_DATABASE:?YEUTECH_MIGRATION_DATABASE is required}"
+test -r "$migration_source" || { echo "Migration database is not readable." >&2; exit 1; }
 test -d "${YEUTECH_AGENT_WORKSPACE:?YEUTECH_AGENT_WORKSPACE is required}" || { echo "Ryan workspace is not mounted." >&2; exit 1; }
 
 mkdir -p "$runtime_root/config" "$runtime_root/logs" "$runtime_root/migration" "$runtime_root/secrets" \
   "$runtime_root/xdg/config" "$runtime_root/xdg/data" "$runtime_root/xdg/cache" "$runtime_root/xdg/state"
 chmod 700 "$runtime_root/config" "$runtime_root/migration" "$runtime_root/secrets" \
   "$runtime_root/xdg" "$runtime_root/xdg/config" "$runtime_root/xdg/data" "$runtime_root/xdg/cache" "$runtime_root/xdg/state"
+
+# SQLite may need WAL/SHM files even when the database is opened read-only. Keep
+# the immutable deployment snapshot mounted read-only and seed one writable,
+# isolated runtime copy for the migration service.
+migration_database="$runtime_root/migration/$(basename "$migration_source")"
+if [ ! -s "$migration_database" ]; then
+  migration_staging="$migration_database.tmp.$$"
+  cp "$migration_source" "$migration_staging"
+  chmod 600 "$migration_staging"
+  mv "$migration_staging" "$migration_database"
+fi
+export YEUTECH_MIGRATION_DATABASE="$migration_database"
 
 password_file="$runtime_root/secrets/opencode.password"
 [ -s "$password_file" ] || { umask 077; openssl rand -hex 32 > "$password_file"; }
