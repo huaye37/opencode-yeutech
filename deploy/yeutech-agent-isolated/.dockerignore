@@ -1,0 +1,7 @@
+.git
+.runtime
+design
+test
+web/node_modules
+web/dist
+*.log

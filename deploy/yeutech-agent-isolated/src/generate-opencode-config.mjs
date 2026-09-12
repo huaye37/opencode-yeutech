@@ -21,8 +21,8 @@ export function buildOpenCodeConfig(modelIds, options = {}) {
         npm: "@ai-sdk/openai-compatible",
         name: "YEUTECH Agent Gateway",
         options: {
-          baseURL: options.baseURL ?? "http://127.0.0.1:18132/v1",
-          apiKey: "{env:YEUTECH_AGENT_BRIDGE_TOKEN}",
+          baseURL: options.baseURL ?? "http://cliproxy:8317/v1",
+          apiKey: "{env:YEUTECH_CLI_PROXY_KEY}",
         },
         models: Object.fromEntries(
           modelIds.map((id) => [id, { name: id }]),
@@ -44,7 +44,7 @@ export function buildOpenCodeConfig(modelIds, options = {}) {
 }
 
 export async function generateConfig({ output, baseURL, token, defaultModel }) {
-  if (!token) throw new Error("YEUTECH_AGENT_BRIDGE_TOKEN is required");
+  if (!token) throw new Error("YEUTECH_CLI_PROXY_KEY is required");
   const modelIds = await fetchModelCatalog({ baseURL, token });
   const config = buildOpenCodeConfig(modelIds, { baseURL: `${baseURL}/v1`, defaultModel });
   await mkdir(path.dirname(output), { recursive: true });
@@ -55,11 +55,11 @@ export async function generateConfig({ output, baseURL, token, defaultModel }) {
 async function main() {
   const output = process.env.OPENCODE_CONFIG_OUTPUT;
   if (!output) throw new Error("OPENCODE_CONFIG_OUTPUT is required");
-  const baseURL = process.env.YEUTECH_AGENT_BRIDGE_URL ?? "http://127.0.0.1:18132";
+  const baseURL = process.env.YEUTECH_CLI_PROXY_URL ?? "http://cliproxy:8317";
   const modelIds = await generateConfig({
     output,
     baseURL,
-    token: process.env.YEUTECH_AGENT_BRIDGE_TOKEN,
+    token: process.env.YEUTECH_CLI_PROXY_KEY,
     defaultModel: process.env.YEUTECH_DEFAULT_MODEL,
   });
   process.stdout.write(`Generated ${output} with ${modelIds.length} conversation models.\n`);

@@ -1,17 +1,46 @@
-# YEUTECH OpenCode 隔离验证环境
+# YEUTECH Agent 工作台
 
-这是一套与线上 Codex 工作台并列、完全独立的 OpenCode Agent 后端样本。第一阶段只验证执行后端，不接门户、不配域名、不读取线上 `codex.sqlite`，也不挂载线上项目目录。界面只读打开一份经过校验的本地快照，用来验证无痛接续。
+这是一套运行在 NAS、与线上 Codex 工作台并列且数据隔离的 OpenCode Agent 工作台。第一阶段只恢复 Ryan（`user_id=3`）的项目和会话，不连接线上 `codex.sqlite`。历史正文读取 2026-09-12 的一致性数据库副本，NAS 项目目录只读挂载；新会话、OpenCode 状态和迁移映射写入独立的 `/volume1/docker/yeutech-agent/runtime`。
+
+## NAS 单容器部署
+
+生产形态只新增一个 `yeutech-agent` 容器。容器内部同时运行静态前端、BFF、历史迁移服务和 OpenCode，宿主只发布 `18140`。现有 `novel-ai-proxy` 继续提供 CLIProxyAPI，不新增 bridge 容器；Mac mini 不参与常驻执行。
+
+NAS 路径：
+
+```text
+/volume1/docker/yeutech-agent/
+├── source/   # Dockerfile、docker-compose.yml 和源码
+├── data/     # 只读历史数据库副本
+└── runtime/  # OpenCode 数据、配置、映射和密钥
+```
+
+DSM Container Manager 创建项目时选择：
+
+```text
+项目名：yeutech-agent
+路径：/docker/yeutech-agent/source
+文件：docker-compose.yml
+```
+
+Compose 的关键边界：
+
+- `/volume2/codex项目空间:/projects:ro`
+- `/volume1/docker/yeutech-agent/data:/data:ro`
+- CLIProxyAPI key 只读挂载到 `/run/secrets/cliproxy.key`
+- `novel-ai-proxy:cliproxy` 只用于容器内访问 `http://cliproxy:8317`
+- OpenCode `18130` 和 migration `18142` 仅监听容器 loopback
+- 浏览器统一访问 `http://NAS-IP:18140/`
 
 ## 隔离边界
 
-- OpenCode 仅监听 `127.0.0.1:18130`；Agent BFF 仅监听 `127.0.0.1:18131`；NAS bridge 仅监听 `127.0.0.1:18132`。
+- OpenCode 仅监听容器内 `127.0.0.1:18130`；migration 仅监听容器内 `127.0.0.1:18142`；BFF 和静态前端监听 `0.0.0.0:18140`。
 - 现有 Codex 的 `18110`、进程、数据库和项目空间不在脚本操作范围内。
 - OpenCode 使用独立的 XDG 配置、数据、缓存和状态目录。
-- 测试工作区为空目录，并设为文件系统只读；OpenCode 权限同时禁用 `edit`、`bash` 和 `external_directory`。
-- bridge 只转发 `/v1/models` 和 `/v1/chat/completions`，要求独立 Bearer token，不保存或输出 NAS API Key。
-- 浏览器侧只能接 Agent BFF。BFF 使用独立 Bearer token，把所有 OpenCode 请求固定到样本工作区，并拒绝 Shell、Command、Share 等未授权接口。
+- 项目工作区由 BFF 固定为 `/projects/ryan`，挂载为文件系统只读；OpenCode 权限同时禁用 `edit`、`bash` 和 `external_directory`。
+- 浏览器侧只能接同源 BFF。BFF 把 OpenCode 请求固定到 Ryan 工作区，并拒绝 Shell、Command、Share 等未授权接口。
 - 当前 BFF 是单用户、单项目隔离样本，不代表多租户已完成；门户接入前还需要把门户用户和项目权限映射成服务端可验证的会话归属。
-- 模型层固定使用现有 CLIProxyAPI；工作台、BFF 和会话协议不绑定具体地址。本地验证仅允许 loopback HTTP，部署时再切换受控的 NAS 地址。
+- 模型层固定复用 NAS 现有 CLIProxyAPI，模型目录在容器启动时动态读取，不在前端写死。
 
 ## 本地检查
 

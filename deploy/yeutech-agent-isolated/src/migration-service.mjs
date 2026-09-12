@@ -297,19 +297,21 @@ export function createMigrationService(options) {
     userID: options.userID,
     ownerDirectory: options.ownerDirectory,
   });
-  const allowedOrigin = options.allowedOrigin ?? "http://127.0.0.1:18140";
+  const allowedOrigin = options.allowedOrigin || null;
   return http.createServer(async (request, response) => {
     response.setHeader("x-content-type-options", "nosniff");
-    response.setHeader("access-control-allow-origin", allowedOrigin);
-    response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
-    response.setHeader("access-control-allow-headers", "content-type");
-    response.setHeader("access-control-expose-headers", "x-next-cursor");
+    if (allowedOrigin) {
+      response.setHeader("access-control-allow-origin", allowedOrigin);
+      response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+      response.setHeader("access-control-allow-headers", "content-type");
+      response.setHeader("access-control-expose-headers", "x-next-cursor");
+    }
     if (request.method === "OPTIONS") {
       response.writeHead(204);
       response.end();
       return;
     }
-    if (request.headers.origin !== allowedOrigin) {
+    if (allowedOrigin && request.headers.origin !== allowedOrigin) {
       response.writeHead(403, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: "Origin not allowed" } }));
       return;
@@ -396,7 +398,7 @@ async function main() {
     upstreamURL: process.env.YEUTECH_OPENCODE_URL ?? "http://127.0.0.1:18130",
     upstreamUsername: process.env.OPENCODE_SERVER_USERNAME ?? "yeutech-agent",
     upstreamPassword: (process.env.OPENCODE_SERVER_PASSWORD ?? await readFile(passwordFile, "utf8")).trim(),
-    allowedOrigin: process.env.YEUTECH_MIGRATION_ALLOWED_ORIGIN ?? "http://127.0.0.1:18140",
+    allowedOrigin: process.env.YEUTECH_MIGRATION_ALLOWED_ORIGIN,
     userID: selectedUserID,
     ownerDirectory: process.env.YEUTECH_MIGRATION_OWNER_DIRECTORY ?? "ryan",
   });

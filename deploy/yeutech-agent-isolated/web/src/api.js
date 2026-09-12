@@ -1,5 +1,5 @@
 const base = "/api/agent";
-const migrationBase = "http://127.0.0.1:18142";
+const migrationBase = "/api/migration";
 
 async function request(path, options) {
   const response = await fetch(`${base}${path}`, options);

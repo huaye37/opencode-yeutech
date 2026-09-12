@@ -1,0 +1,32 @@
+services:
+  yeutech-agent:
+    container_name: yeutech-agent
+    build:
+      context: .
+      args:
+        OPENCODE_VERSION: "1.18.30"
+    restart: unless-stopped
+    ports:
+      - "18140:18140"
+    external_links:
+      - "novel-ai-proxy:cliproxy"
+    environment:
+      YEUTECH_AGENT_RUNTIME_ROOT: /runtime
+      YEUTECH_AGENT_WORKSPACE: /projects/ryan
+      YEUTECH_MIGRATION_DATABASE: /data/codex-20260912.sqlite
+      YEUTECH_MIGRATION_PROJECTS_ROOT: /projects
+      YEUTECH_MIGRATION_USER_ID: "3"
+      YEUTECH_MIGRATION_OWNER_DIRECTORY: ryan
+      YEUTECH_CLI_PROXY_URL: http://cliproxy:8317
+      OPENCODE_DISABLE_AUTOUPDATE: "true"
+    volumes:
+      - /volume1/docker/yeutech-agent/runtime:/runtime
+      - /volume1/docker/yeutech-agent/data:/data:ro
+      - /volume2/codex项目空间:/projects:ro
+      - /volume1/docker/yeutech-api-manager/secrets/api.key:/run/secrets/cliproxy.key:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18140/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

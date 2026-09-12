@@ -26,6 +26,8 @@ test("builds read-only OpenCode provider config", () => {
   assert.equal(config.model, "yeutech/gpt-5.6-sol");
   assert.equal(config.permission.edit, "deny");
   assert.equal(config.permission.bash, "deny");
+  assert.equal(config.provider.yeutech.options.baseURL, "http://cliproxy:8317/v1");
+  assert.equal(config.provider.yeutech.options.apiKey, "{env:YEUTECH_CLI_PROXY_KEY}");
   assert.deepEqual(Object.keys(config.provider.yeutech.models), ["gpt-5.6-sol", "gpt-5.6-terra"]);
 });
 

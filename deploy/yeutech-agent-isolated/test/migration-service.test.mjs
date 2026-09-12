@@ -109,6 +109,7 @@ test("blocks foreign origins and creates a mapped OpenCode continuation without 
     upstreamURL,
     upstreamUsername: "yeutech-agent",
     upstreamPassword: PASSWORD,
+    allowedOrigin: ORIGIN,
     userID: 3,
     ownerDirectory: "ryan",
   });
