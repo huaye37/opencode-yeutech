@@ -6,10 +6,7 @@ services:
       args:
         OPENCODE_VERSION: "1.18.30"
     restart: unless-stopped
-    ports:
-      - "18140:18140"
-    external_links:
-      - "novel-ai-proxy:cliproxy"
+    network_mode: host
     environment:
       YEUTECH_AGENT_RUNTIME_ROOT: /runtime
       YEUTECH_AGENT_WORKSPACE: /projects/ryan
@@ -17,7 +14,7 @@ services:
       YEUTECH_MIGRATION_PROJECTS_ROOT: /projects
       YEUTECH_MIGRATION_USER_ID: "3"
       YEUTECH_MIGRATION_OWNER_DIRECTORY: ryan
-      YEUTECH_CLI_PROXY_URL: http://cliproxy:8317
+      YEUTECH_CLI_PROXY_URL: http://127.0.0.1:18319
       OPENCODE_DISABLE_AUTOUPDATE: "true"
     volumes:
       - /volume1/docker/yeutech-agent/runtime:/runtime

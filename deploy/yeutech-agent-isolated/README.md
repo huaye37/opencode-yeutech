@@ -28,8 +28,8 @@ Compose 的关键边界：
 - `/volume2/codex项目空间:/projects:ro`
 - `/volume1/docker/yeutech-agent/data:/data:ro`
 - CLIProxyAPI key 只读挂载到 `/run/secrets/cliproxy.key`
-- `novel-ai-proxy:cliproxy` 只用于容器内访问 `http://cliproxy:8317`
-- OpenCode `18130` 和 migration `18142` 仅监听容器 loopback
+- 容器使用 NAS host 网络，只通过宿主回环地址 `http://127.0.0.1:18319` 复用 `novel-ai-proxy`
+- OpenCode `18130` 和 migration `18142` 仅监听 NAS loopback，不向局域网开放
 - 浏览器统一访问 `http://NAS-IP:18140/`
 
 ## 隔离边界
