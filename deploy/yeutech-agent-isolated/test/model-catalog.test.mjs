@@ -28,3 +28,12 @@ test("builds read-only OpenCode provider config", () => {
   assert.equal(config.permission.bash, "deny");
   assert.deepEqual(Object.keys(config.provider.yeutech.models), ["gpt-5.6-sol", "gpt-5.6-terra"]);
 });
+
+test("falls back to the first dynamic model when the preferred default is absent", () => {
+  const config = buildOpenCodeConfig(["claude-haiku-4-5", "claude-sonnet-4-6"]);
+  assert.equal(config.model, "yeutech/claude-haiku-4-5");
+  assert.throws(
+    () => buildOpenCodeConfig(["claude-haiku-4-5"], { defaultModel: "missing-model" }),
+    /Default model is absent/,
+  );
+});

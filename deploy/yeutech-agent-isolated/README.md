@@ -58,6 +58,7 @@ npm --prefix web run dev
 ```
 
 启动脚本会生成独立 portal token、bridge token 和 OpenCode Basic Auth 密码，动态读取 NAS `/v1/models`，过滤图片模型与 `codex-auto-review`，再生成只读 `opencode.json`。任一新端口已被占用时脚本会拒绝启动。
+默认优先使用 `gpt-5.6-sol`；当动态目录中没有该模型时自动选择第一个对话模型。如果通过 `YEUTECH_DEFAULT_MODEL` 显式指定，则该模型必须存在于当前目录。
 
 停止样本：
 
@@ -66,6 +67,18 @@ npm --prefix web run dev
 ```
 
 运行态、密钥、日志和 OpenCode 二进制都位于 `.runtime/`，不会进入源码版本控制。
+
+## 本地容量基线
+
+2026-09-12 在当前 Mac 上使用 OpenCode `1.18.30` 和本地 CLIProxyAPI `7.2.156` 实测完整隔离栈：
+
+| 并发实例 | 整批就绪时间 | 总 RSS | OpenCode | BFF | bridge |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1.424s | 499.2MB | 382.5MB | 58.0MB | 58.7MB |
+| 3 | 1.470s | 1499.6MB | 1149.3MB | 174.2MB | 176.0MB |
+| 5 | 1.550s | 2496.9MB | 1912.0MB | 290.8MB | 294.2MB |
+
+数据表明启动时间在 5 实例下仍稳定，内存主要随 OpenCode 实例数线性增长。生产架构应共享一套 BFF 和 bridge，只按租户隔离 OpenCode 数据目录和必要的执行实例，避免每个租户重复消耗约 117MB Node 进程内存。该基线不包含真实模型推理负载。
 
 ## 第一阶段验收
 

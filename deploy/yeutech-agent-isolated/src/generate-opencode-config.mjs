@@ -8,7 +8,8 @@ import {
 } from "./model-catalog.mjs";
 
 export function buildOpenCodeConfig(modelIds, options = {}) {
-  const defaultModel = options.defaultModel ?? DEFAULT_MODEL_ID;
+  if (modelIds.length === 0) throw new Error("Conversation model catalog is empty");
+  const defaultModel = options.defaultModel ?? (modelIds.includes(DEFAULT_MODEL_ID) ? DEFAULT_MODEL_ID : modelIds[0]);
   if (!modelIds.includes(defaultModel)) {
     throw new Error(`Default model is absent from catalog: ${defaultModel}`);
   }
@@ -59,7 +60,7 @@ async function main() {
     output,
     baseURL,
     token: process.env.YEUTECH_AGENT_BRIDGE_TOKEN,
-    defaultModel: process.env.YEUTECH_DEFAULT_MODEL ?? DEFAULT_MODEL_ID,
+    defaultModel: process.env.YEUTECH_DEFAULT_MODEL,
   });
   process.stdout.write(`Generated ${output} with ${modelIds.length} conversation models.\n`);
 }
