@@ -125,7 +125,18 @@ function Conversation({ session, projectName, messages, olderCursor, loadingOlde
   const messagesRef = useRef(null);
   const lastMessageID = messages.at(-1)?.id;
   useLayoutEffect(() => {
-    if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    const target = messagesRef.current;
+    if (!target) return;
+    target.scrollTop = target.scrollHeight;
+    let secondFrame;
+    const firstFrame = window.requestAnimationFrame(() => {
+      target.scrollTop = target.scrollHeight;
+      secondFrame = window.requestAnimationFrame(() => { target.scrollTop = target.scrollHeight; });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
   }, [session?.id, lastMessageID]);
   const submit = () => { const value = draft.trim(); if (!value) return; setDraft(""); onSend(value); };
   if (!session) return <section className="conversation empty-workbench"><div className="empty-icon"><Icon name="folder" size={23} /></div><strong>选择一个项目会话</strong><span>项目和会话来自本地只读副本。</span></section>;
@@ -309,6 +320,10 @@ export function App() {
     if (remoteID) await agentApi.abort(remoteID).catch(() => {});
   };
   const selectProject = (projectID) => {
+    if (selectedProject === projectID) {
+      setSelectedProject("");
+      return;
+    }
     setSelectedProject(projectID);
     const first = conversations.find((item) => item.projectId === projectID);
     if (first) selectSession(first.id);

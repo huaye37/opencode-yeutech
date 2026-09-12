@@ -80,7 +80,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
 .icon-button:hover, .tool-button:hover { background: rgba(221,232,246,.8); color: #27547f; }
 .icon-button:disabled, .tool-button:disabled { cursor: not-allowed; opacity: .38; }
 .icon-button:disabled:hover, .tool-button:disabled:hover { background: none; color: inherit; }
-.messages { min-height: 0; flex: 1; overflow: auto; padding: 24px clamp(16px,3vw,28px) 16px; scroll-behavior: smooth; }
+.messages { min-height: 0; flex: 1; overflow: auto; padding: 24px clamp(16px,3vw,28px) 16px; }
 .load-older { display: block; margin: 0 auto 20px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,.74); padding: 7px 14px; color: var(--muted); font-size: 11px; }
 .load-older:hover { border-color: #a7c8ee; color: var(--accent); }
 .load-older:disabled { opacity: .58; }
