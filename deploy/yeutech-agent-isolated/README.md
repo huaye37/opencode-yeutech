@@ -29,7 +29,7 @@ Compose 的关键边界：
 - `/volume1/docker/yeutech-agent/data:/data:ro`
 - CLIProxyAPI key 只读挂载到 `/run/secrets/cliproxy.key`
 - 容器使用 NAS host 网络，只通过宿主回环地址 `http://127.0.0.1:18319` 复用 `novel-ai-proxy`
-- OpenCode `18130` 和 migration `18142` 仅监听 NAS loopback，不向局域网开放
+- OpenCode `18131` 和 migration `18142` 仅监听 NAS loopback，不向局域网开放
 - 浏览器统一访问 `http://NAS-IP:18140/`
 
 ## 隔离边界

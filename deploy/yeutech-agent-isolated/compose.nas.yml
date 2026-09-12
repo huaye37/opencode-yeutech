@@ -15,6 +15,7 @@ services:
       YEUTECH_MIGRATION_USER_ID: "3"
       YEUTECH_MIGRATION_OWNER_DIRECTORY: ryan
       YEUTECH_CLI_PROXY_URL: http://127.0.0.1:18319
+      YEUTECH_OPENCODE_PORT: "18131"
       OPENCODE_DISABLE_AUTOUPDATE: "true"
     volumes:
       - /volume1/docker/yeutech-agent/runtime:/runtime
