@@ -1,0 +1,14 @@
+{
+  "name": "@yeutech/opencode-isolated",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "bridge": "node src/nas-gateway-bridge.mjs",
+    "generate-config": "node src/generate-opencode-config.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
