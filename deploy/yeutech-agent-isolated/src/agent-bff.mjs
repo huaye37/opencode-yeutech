@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import http from "node:http";
@@ -25,12 +25,35 @@ const MIME_TYPES = new Map([
   [".svg", "image/svg+xml"], [".woff2", "font/woff2"],
 ]);
 
-function authorized(header, token) {
-  if (!token) return true;
-  if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
-  const supplied = Buffer.from(header.slice(7));
-  const expected = Buffer.from(token);
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+function secureEqual(supplied, expected) {
+  const suppliedBuffer = Buffer.from(supplied);
+  const expectedBuffer = Buffer.from(expected);
+  return suppliedBuffer.length === expectedBuffer.length && timingSafeEqual(suppliedBuffer, expectedBuffer);
+}
+
+function authenticateIdentity(header, secret, users, nowSeconds = Math.floor(Date.now() / 1000)) {
+  if (typeof header !== "string") return { statusCode: 401, message: "Portal identity is required" };
+  const separator = header.lastIndexOf(".");
+  if (separator <= 0 || separator === header.length - 1) return { statusCode: 401, message: "Portal identity is invalid" };
+  const payloadSegment = header.slice(0, separator);
+  const suppliedSignature = header.slice(separator + 1);
+  const expectedSignature = createHmac("sha256", secret).update(payloadSegment).digest("base64url");
+  if (!secureEqual(suppliedSignature, expectedSignature)) return { statusCode: 401, message: "Portal identity is invalid" };
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadSegment, "base64url").toString("utf8"));
+  } catch {
+    return { statusCode: 401, message: "Portal identity is invalid" };
+  }
+  const userId = Number(payload?.sub);
+  if (!Number.isSafeInteger(userId) || Number(payload?.exp) < nowSeconds) {
+    return { statusCode: 401, message: "Portal identity has expired" };
+  }
+  const user = users.get(userId);
+  if (!user || user.username !== String(payload?.username || "")) {
+    return { statusCode: 403, message: "This portal user is not enabled for Agent" };
+  }
+  return { user, payload };
 }
 
 function allowed(method, pathname) {
@@ -114,8 +137,17 @@ async function serveStatic(response, webRoot, pathname) {
 }
 
 export function createAgentBff(options) {
-  if (options.token && options.token.length < 24) throw new Error("BFF token must contain at least 24 characters");
-  if (!path.isAbsolute(options.workspace)) throw new Error("BFF workspace must be an absolute path");
+  if (typeof options.identitySecret !== "string" || options.identitySecret.length < 32) throw new Error("Portal identity secret must contain at least 32 characters");
+  if (!Array.isArray(options.users) || options.users.length === 0) throw new Error("At least one Agent user mapping is required");
+  const users = new Map(options.users.map((user) => {
+    const portalUserId = Number(user.portalUserId);
+    const workspace = String(user.workspace || "");
+    if (!Number.isSafeInteger(portalUserId) || portalUserId <= 0) throw new Error("Agent portal user ID is invalid");
+    if (!/^[a-zA-Z0-9._-]{1,80}$/.test(String(user.username || ""))) throw new Error("Agent username is invalid");
+    if (!path.isAbsolute(workspace)) throw new Error("Agent workspace must be an absolute path");
+    return [portalUserId, { ...user, portalUserId, username: String(user.username), workspace }];
+  }));
+  if (users.size !== options.users.length) throw new Error("Agent portal user mappings must be unique");
   if (typeof options.upstreamUsername !== "string" || options.upstreamUsername.length === 0) throw new Error("OpenCode username is required");
   if (typeof options.upstreamPassword !== "string" || options.upstreamPassword.length < 24) throw new Error("OpenCode password must contain at least 24 characters");
   const upstream = new URL(options.upstreamURL ?? "http://127.0.0.1:18130");
@@ -130,17 +162,18 @@ export function createAgentBff(options) {
     const incoming = new URL(request.url ?? "/", "http://127.0.0.1");
     if (request.method === "GET" && incoming.pathname === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: true, workspace: options.workspace }));
+      response.end(JSON.stringify({ ok: true, enabledUsers: users.size }));
       return;
     }
     try {
+      const identity = authenticateIdentity(request.headers["x-yeutech-agent-identity"], options.identitySecret, users);
+      if (!identity.user) {
+        response.writeHead(identity.statusCode, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { message: identity.message } }));
+        return;
+      }
       if (incoming.pathname === "/api/agent" || incoming.pathname.startsWith("/api/agent/")) {
-        if (!authorized(request.headers.authorization, options.token)) {
-          response.writeHead(401, { "content-type": "application/json" });
-          response.end(JSON.stringify({ error: { message: "Unauthorized" } }));
-          return;
-        }
-        await proxy(request, response, { prefix: "/api/agent", upstream, authorization, workspace: options.workspace, allow: allowed, bodyLimit });
+        await proxy(request, response, { prefix: "/api/agent", upstream, authorization, workspace: identity.user.workspace, allow: allowed, bodyLimit });
         return;
       }
       if (incoming.pathname === "/api/migration" || incoming.pathname.startsWith("/api/migration/")) {
@@ -160,8 +193,8 @@ export function createAgentBff(options) {
 
 async function main() {
   const server = createAgentBff({
-    token: process.env.YEUTECH_AGENT_BFF_TOKEN || null,
-    workspace: process.env.YEUTECH_AGENT_WORKSPACE,
+    identitySecret: process.env.YEUTECH_AGENT_IDENTITY_SECRET,
+    users: JSON.parse(process.env.YEUTECH_AGENT_USERS_JSON || "[]"),
     upstreamURL: process.env.YEUTECH_OPENCODE_URL ?? "http://127.0.0.1:18130",
     migrationURL: process.env.YEUTECH_MIGRATION_URL ?? "http://127.0.0.1:18142",
     upstreamUsername: process.env.OPENCODE_SERVER_USERNAME ?? "yeutech-agent",

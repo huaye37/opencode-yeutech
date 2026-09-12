@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
@@ -6,9 +7,18 @@ import path from "node:path";
 import test from "node:test";
 import { createAgentBff } from "../src/agent-bff.mjs";
 
-const TOKEN = "abcdef0123456789abcdef0123456789";
+const IDENTITY_SECRET = "abcdef0123456789abcdef0123456789";
 const PASSWORD = "opencode-test-password-0123456789";
 const WORKSPACE = "/bounded/sample-workspace";
+
+function identity(user = { sub: 3, username: "ryan" }, expiresAt = Math.floor(Date.now() / 1000) + 60) {
+  const payload = Buffer.from(JSON.stringify({ ...user, role: "member", exp: expiresAt })).toString("base64url");
+  return `${payload}.${createHmac("sha256", IDENTITY_SECRET).update(payload).digest("base64url")}`;
+}
+
+function identityHeaders(value = identity()) {
+  return { "x-yeutech-agent-identity": value };
+}
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -23,8 +33,8 @@ async function withBff(upstreamHandler, run, options = {}) {
   const upstream = http.createServer(upstreamHandler);
   const upstreamURL = await listen(upstream);
   const bff = createAgentBff({
-    token: TOKEN,
-    workspace: WORKSPACE,
+    identitySecret: IDENTITY_SECRET,
+    users: [{ portalUserId: 3, username: "ryan", workspace: WORKSPACE }],
     upstreamURL,
     upstreamUsername: "yeutech-agent",
     upstreamPassword: PASSWORD,
@@ -39,12 +49,22 @@ async function withBff(upstreamHandler, run, options = {}) {
   }
 }
 
-test("rejects anonymous requests before reaching OpenCode", async () => {
+test("rejects anonymous API, migration, and static requests before reaching an upstream", async () => {
   let hits = 0;
   await withBff(() => { hits += 1; }, async (baseURL) => {
     const response = await fetch(`${baseURL}/api/agent/session`);
     assert.equal(response.status, 401);
+    assert.equal((await fetch(`${baseURL}/api/migration/projects`)).status, 401);
+    assert.equal((await fetch(baseURL)).status, 401);
     assert.equal(hits, 0);
+  });
+});
+
+test("rejects forged, expired, and unmapped portal identities", async () => {
+  await withBff(() => {}, async (baseURL) => {
+    assert.equal((await fetch(baseURL, { headers: identityHeaders(`${identity()}x`) })).status, 401);
+    assert.equal((await fetch(baseURL, { headers: identityHeaders(identity(undefined, 1)) })).status, 401);
+    assert.equal((await fetch(baseURL, { headers: identityHeaders(identity({ sub: 1, username: "lucian" })) })).status, 403);
   });
 });
 
@@ -53,7 +73,7 @@ test("blocks OpenCode shell routes", async () => {
   await withBff(() => { hits += 1; }, async (baseURL) => {
     const response = await fetch(`${baseURL}/api/agent/session/ses_abc123/shell`, {
       method: "POST",
-      headers: { authorization: `Bearer ${TOKEN}` },
+      headers: identityHeaders(),
     });
     assert.equal(response.status, 404);
     assert.equal(hits, 0);
@@ -73,7 +93,7 @@ test("replaces caller directory and injects OpenCode Basic auth", async () => {
     response.end("[]");
   }, async (baseURL) => {
     const response = await fetch(`${baseURL}/api/agent/session?directory=/tmp/escape&workspace=bad&path=/&limit=200&before=cursor-1`, {
-      headers: { authorization: `Bearer ${TOKEN}` },
+      headers: identityHeaders(),
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-next-cursor"), "cursor-2");
@@ -88,7 +108,7 @@ test("streams OpenCode SSE responses", async () => {
     response.end("data: second\n\n");
   }, async (baseURL) => {
     const response = await fetch(`${baseURL}/api/agent/event`, {
-      headers: { authorization: `Bearer ${TOKEN}` },
+      headers: identityHeaders(),
     });
     assert.equal(response.headers.get("content-type"), "text/event-stream");
     assert.equal(await response.text(), "data: first\n\ndata: second\n\n");
@@ -99,7 +119,7 @@ test("enforces the BFF request body limit", async () => {
   await withBff(() => {}, async (baseURL) => {
     const response = await fetch(`${baseURL}/api/agent/session`, {
       method: "POST",
-      headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" },
+      headers: { ...identityHeaders(), "content-type": "application/json" },
       body: JSON.stringify({ title: "too large" }),
     });
     assert.equal(response.status, 413);
@@ -108,8 +128,8 @@ test("enforces the BFF request body limit", async () => {
 
 test("rejects incomplete upstream credentials at startup", () => {
   assert.throws(() => createAgentBff({
-    token: TOKEN,
-    workspace: WORKSPACE,
+    identitySecret: IDENTITY_SECRET,
+    users: [{ portalUserId: 3, username: "ryan", workspace: WORKSPACE }],
     upstreamURL: "http://127.0.0.1:18130",
     upstreamUsername: "yeutech-agent",
     upstreamPassword: "short",
@@ -127,9 +147,9 @@ test("serves the built workbench and forwards same-origin migration routes", asy
   const migrationURL = await listen(migration);
   try {
     await withBff((_request, response) => response.end(), async (baseURL) => {
-      assert.match(await fetch(baseURL).then((response) => response.text()), /YEUTECH Agent/);
-      assert.deepEqual(await fetch(`${baseURL}/api/migration/projects`).then((response) => response.json()), []);
-    }, { token: null, migrationURL, webRoot });
+      assert.match(await fetch(baseURL, { headers: identityHeaders() }).then((response) => response.text()), /YEUTECH Agent/);
+      assert.deepEqual(await fetch(`${baseURL}/api/migration/projects`, { headers: identityHeaders() }).then((response) => response.json()), []);
+    }, { migrationURL, webRoot });
   } finally {
     await close(migration);
     await rm(webRoot, { recursive: true });

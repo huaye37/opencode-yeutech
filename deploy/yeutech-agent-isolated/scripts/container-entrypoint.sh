@@ -31,8 +31,15 @@ export YEUTECH_MIGRATION_DATABASE="$migration_database"
 
 password_file="$runtime_root/secrets/opencode.password"
 [ -s "$password_file" ] || { umask 077; openssl rand -hex 32 > "$password_file"; }
+identity_file="${YEUTECH_AGENT_IDENTITY_SECRET_FILE:-$runtime_root/secrets/portal.identity.secret}"
+[ -s "$identity_file" ] || { umask 077; openssl rand -hex 32 > "$identity_file"; }
 export OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-yeutech-agent}"
 export OPENCODE_SERVER_PASSWORD="$(tr -d '\r\n' < "$password_file")"
+export YEUTECH_AGENT_IDENTITY_SECRET="$(tr -d '\r\n' < "$identity_file")"
+if [ -z "${YEUTECH_AGENT_USERS_JSON:-}" ]; then
+  YEUTECH_AGENT_USERS_JSON='[{"portalUserId":3,"username":"ryan","workspace":"/projects/ryan"}]'
+fi
+export YEUTECH_AGENT_USERS_JSON
 export YEUTECH_CLI_PROXY_KEY="$(tr -d '\r\n' < "$key_file")"
 export YEUTECH_OPENCODE_URL="http://127.0.0.1:$opencode_port"
 export YEUTECH_MIGRATION_URL="http://127.0.0.1:$migration_port"

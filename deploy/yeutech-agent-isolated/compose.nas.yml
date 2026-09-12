@@ -10,6 +10,7 @@ services:
     environment:
       YEUTECH_AGENT_RUNTIME_ROOT: /runtime
       YEUTECH_AGENT_WORKSPACE: /projects/ryan
+      YEUTECH_AGENT_USERS_JSON: '[{"portalUserId":3,"username":"ryan","workspace":"/projects/ryan"}]'
       YEUTECH_MIGRATION_DATABASE: /data/codex-20260912.sqlite
       YEUTECH_MIGRATION_PROJECTS_ROOT: /projects
       YEUTECH_MIGRATION_USER_ID: "3"
