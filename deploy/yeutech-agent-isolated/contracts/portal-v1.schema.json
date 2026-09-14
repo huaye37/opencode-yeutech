@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yeutech.cn/schemas/agent-portal-2026-09-13.json",
+  "title": "YEUTECH Agent Portal Projection",
+  "type": "object",
+  "required": ["contractVersion"],
+  "properties": {
+    "contractVersion": { "const": "2026-09-13" },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "retryable", "scope", "recoveryAction"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "scope": { "type": "string", "minLength": 1 },
+        "recoveryAction": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "defaultModel": {
+      "type": "object",
+      "required": ["id", "reason"],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "reason": { "enum": ["configured_preference", "first_runnable", "no_runnable_model"] }
+      }
+    },
+    "session": { "type": "object" },
+    "messages": { "type": "array" },
+    "permissions": { "type": "array" },
+    "children": { "type": "array" },
+    "plan": { "type": "array" },
+    "outline": { "type": "array" },
+    "activity": { "type": "array" },
+    "stats": { "type": "object" },
+    "context": { "type": "object" }
+  },
+  "additionalProperties": true
+}

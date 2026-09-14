@@ -17,11 +17,18 @@ export function Icon({ name, size = 18 }) {
     chevronDown: <><path d="m6 9 6 6 6-6" /></>,
     download: <><path d="M5 19h14M12 4v11m-4-4 4 4 4-4" /></>,
     maximize: <><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M4 16v4h4" /></>,
+    minimize: <><path d="M9 3v6H3M15 3v6h6M21 15h-6v6M3 15h6v6" /></>,
     shield: <><path d="M12 3 5.5 6v5.5c0 4.2 2.6 7.4 6.5 9.5 3.9-2.1 6.5-5.3 6.5-9.5V6z" /><path d="m9 12 2 2 4-4" /></>,
     paperclip: <><path d="m9.5 12.5 5.2-5.2a3 3 0 0 1 4.2 4.2l-6.6 6.6a5 5 0 0 1-7.1-7.1l6.4-6.4" /></>,
     arrowUp: <><path d="M12 19V5m-6 6 6-6 6 6" /></>,
     refresh: <><path d="M20 11a8 8 0 0 0-14.7-4.3L3 10M4 13a8 8 0 0 0 14.7 4.3L21 14" /><path d="M3 5v5h5M21 19v-5h-5" /></>,
     back: <><path d="m11 5-7 7 7 7M4 12h16" /></>,
+    warning: <><path d="M12 4 3.8 19h16.4z" /><path d="M12 9v4M12 16.5h.01" /></>,
+    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
+    edit: <><path d="m14.5 5.5 4 4M5 19l3.6-.8L19 6.8 16.2 4 4.8 15.4z" /></>,
+    trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></>,
+    fork: <><circle cx="7" cy="5" r="2" /><circle cx="17" cy="7" r="2" /><circle cx="7" cy="19" r="2" /><path d="M7 7v10M9 12h3a5 5 0 0 0 5-5" /></>,
+    diff: <><path d="M8 4v16M5 7h6M15 7h4M17 5v4M15 17h4" /></>,
   };
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yeutech.cn/schemas/agent-capability-v1.json",
+  "title": "YEUTECH Model Capability Catalog v1",
+  "description": "Discovery entries may be incomplete, but an entry marked selectable must have bounded input/output budgets and explicit modalities. Consumers reserve max_output_tokens from context_length and clamp a larger standalone max_input_tokens to the remaining simultaneous input budget.",
+  "type": "object",
+  "required": ["data"],
+  "properties": {
+    "object": { "const": "list" },
+    "generation": {
+      "description": "Monotonic catalog revision published by the capability provider.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "data": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/modelCapability" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "modality": {
+      "enum": ["text", "image", "audio", "video"]
+    },
+    "modalities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/modality" },
+      "uniqueItems": true
+    },
+    "modelCapability": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "object": { "const": "model_capability" },
+        "created": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "owned_by": { "type": "string" },
+        "type": { "type": "string" },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S" },
+        "description": { "type": "string" },
+        "context_length": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "max_input_tokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "max_output_tokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "supported_parameters": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "uniqueItems": true
+        },
+        "supported_input_modalities": { "$ref": "#/$defs/modalities" },
+        "supported_output_modalities": { "$ref": "#/$defs/modalities" },
+        "thinking": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "max": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "zero_allowed": { "type": "boolean" },
+            "dynamic_allowed": { "type": "boolean" },
+            "levels": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "supports_web_search": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "selectable": { "type": "boolean" },
+        "capability_status": { "enum": ["incomplete", "complete", "ready"] }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "selectable": { "const": true } },
+            "required": ["selectable"]
+          },
+          "then": {
+            "required": [
+              "context_length",
+              "max_output_tokens",
+              "supported_input_modalities",
+              "supported_output_modalities"
+            ],
+            "properties": {
+              "context_length": { "minimum": 1 },
+              "max_output_tokens": { "minimum": 1 },
+              "supported_input_modalities": { "minItems": 1 },
+              "supported_output_modalities": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "capability_status": { "const": "incomplete" } },
+            "required": ["capability_status"]
+          },
+          "then": {
+            "properties": { "selectable": { "const": false } }
+          }
+        }
+      ],
+      "x-yeutech-window-rule": "effective_input + max_output_tokens <= context_length; effective_input is min(max_input_tokens, context_length - max_output_tokens) when declared, otherwise context_length - max_output_tokens"
+    }
+  }
+}

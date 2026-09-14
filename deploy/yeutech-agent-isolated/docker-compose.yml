@@ -1,0 +1,4 @@
+# Synology Container Manager discovers this conventional filename. Keep the
+# service definition in compose.nas.yml authoritative for CLI deployments.
+include:
+  - compose.nas.yml

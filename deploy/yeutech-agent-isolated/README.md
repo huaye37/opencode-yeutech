@@ -1,6 +1,6 @@
 # YEUTECH Agent 工作台
 
-这是一套运行在 NAS、与线上 Codex 工作台并列且数据隔离的 OpenCode Agent 工作台。第一阶段只恢复 Ryan（`user_id=3`）的项目和会话，不连接线上 `codex.sqlite`。历史正文读取 2026-09-12 的一致性数据库副本，NAS 项目目录只读挂载；新会话、OpenCode 状态和迁移映射写入独立的 `/volume1/docker/yeutech-agent/runtime`。
+这是一套运行在 NAS、与线上 Codex 工作台并列且数据隔离的 OpenCode Agent 工作台。第一阶段只恢复 Ryan（`user_id=3`）的项目和会话，不连接线上 `codex.sqlite`。历史正文读取 2026-09-12 的一致性数据库副本；新会话、OpenCode 状态和迁移映射写入独立的 `/volume1/docker/yeutech-agent/runtime`。
 
 ## NAS 单容器部署
 
@@ -25,23 +25,53 @@ DSM Container Manager 创建项目时选择：
 
 Compose 的关键边界：
 
-- `/volume2/codex项目空间:/projects:ro`
+- `${YEUTECH_PROJECTS_BIND_SOURCE}` 以 bind 方式挂载到 `/projects:rw`（宿主源目录必须先通过不可变 `spaceId` marker 唯一解析，并禁止 Docker 自动创建缺失源目录；`edit` 允许，命令及其他副作用工具必须逐次审批）
 - `/volume1/docker/yeutech-agent/data:/data:ro`
 - 首次启动把固定日期的只读 SQLite 快照复制到独立 runtime，供 SQLite 创建必要的 WAL/SHM；不会修改源副本
 - CLIProxyAPI key 只读挂载到 `/run/secrets/cliproxy.key`
 - 容器使用 NAS host 网络，只通过宿主回环地址 `http://127.0.0.1:18319` 复用 `novel-ai-proxy`
-- OpenCode `18131` 和 migration `18142` 仅监听 NAS loopback，不向局域网开放
+- 动态 OpenCode Worker `18150-18249`、supervisor `18141` 和 migration `18142` 仅监听 NAS loopback，不向局域网开放
 - 浏览器统一访问 `http://NAS-IP:18140/`
+
+### 宿主项目空间定位
+
+项目空间目录可以改名，Compose 不再保存 `/volume2/codex项目空间` 这个易漂移路径。在真实项目根放置 `.yeutech-space-id`，文件内只保存稳定 ID，例如：
+
+```text
+yeutech-codex-projects-v1
+```
+
+然后通过包装脚本执行 Compose：
+
+```bash
+sudo env \
+  YEUTECH_PROJECT_SPACE_PARENT=/volume2 \
+  YEUTECH_PROJECT_SPACE_ID=yeutech-codex-projects-v1 \
+  ./scripts/compose-nas.sh -p yeutech-agent config --quiet
+
+sudo env \
+  YEUTECH_PROJECT_SPACE_PARENT=/volume2 \
+  YEUTECH_PROJECT_SPACE_ID=yeutech-codex-projects-v1 \
+  ./scripts/compose-nas.sh -p yeutech-agent up -d --build --force-recreate --no-deps yeutech-agent
+```
+
+固定 `-p yeutech-agent` 可确保 CLI 与 DSM Container Manager 识别为同一个 Compose 项目，避免已有固定容器名被误判为冲突。
+
+解析器只检查限定父目录的直接子目录，不跟随目录或 marker 符号链接。找不到或找到多份相同 `spaceId` 时立即退出；Compose 变量未注入时也会在解析配置阶段失败，因此 Docker 不会因旧目录改名而创建一个空的 bind source。磁盘挂载点改变时只更新受限的 `YEUTECH_PROJECT_SPACE_PARENT`，不修改 `spaceId`。
 
 ## 隔离边界
 
 - OpenCode 仅监听容器内 `127.0.0.1:18130`；migration 仅监听容器内 `127.0.0.1:18142`；BFF 和静态前端监听 `0.0.0.0:18140`。
 - 现有 Codex 的 `18110`、进程、数据库和项目空间不在脚本操作范围内。
 - OpenCode 使用独立的 XDG 配置、数据、缓存和状态目录。
-- 项目工作区由 BFF 按门户用户固定映射：`lucian` 使用 `/projects/lucian`，`ryan` 使用 `/projects/ryan`；历史项目与会话只从 Ryan 的迁移快照恢复。目录挂载为文件系统只读，OpenCode 权限同时禁用 `edit`、`bash` 和 `external_directory`。
-- 浏览器侧只能接同源 BFF。BFF 把 OpenCode 请求固定到 Ryan 工作区，并拒绝 Shell、Command、Share 等未授权接口。
-- 当前 BFF 是单用户、单项目隔离样本，不代表多租户已完成；门户接入前还需要把门户用户和项目权限映射成服务端可验证的会话归属。
-- 模型层固定复用 NAS 现有 CLIProxyAPI，模型目录在容器启动时动态读取，不在前端写死。
+- 项目工作区由 supervisor 按门户不可变用户 ID 懒创建；升级时 Ryan/Lucian 继续使用 `/projects/ryan`、`/projects/lucian`，新用户使用 `/projects/users/<portalUserId>`。历史项目与会话只从 Ryan 的迁移快照恢复。
+- 每个身份拥有独立 Worker、端口、XDG、配置、日志和 SQLite。映射原子持久化在 `/runtime/workers/registry.json`，重启后端口稳定；空闲 Worker 默认 30 分钟后回收。打开或刷新页面、浏览项目/文件、读取历史和准备工作区都不启动用户 Worker；只有发送新消息时才以原数据唤醒。
+- 用户和项目路径不以名称作为身份：owner 根目录保存 `.yeutech-user.json`（不可变 `portalUserId`），项目目录保存 `.yeutech-project.json`（不可变 `projectId` 和所属 `portalUserId`）。因此门户用户名、owner 文件夹名、项目展示名和项目文件夹名都可以改变；首次访问重新扫描 marker，并只在校验通过后更新 registry 的 `currentPath`。Ryan 首次升级会在既有 `/projects/ryan` 安全写入用户 marker，不移动也不复制原项目。
+- owner 根目录改名时，supervisor 必须先确认该用户 Worker 空闲并停止子进程，再通过 SQLite online backup 保存该用户 `opencode.db`，在单一事务中重绑 `session.directory`、`project.worktree`、`project_directory.directory` 和 `project.sandboxes` 的旧 owner 路径前缀。`session.path` 保持相对路径不变；失败会回滚且 registry 不切换。项目目录单独改名只更新项目 marker 索引，不会错误改写以 owner 根目录为 `directory` 的会话。
+- marker 重复、格式或归属错误、选中的 workspace/marker 是符号链接、真实路径越出 `/projects`，以及数据库重绑会产生主键冲突时均 fail closed。扫描不会跟随无关符号链接，避免 NAS 中一个无关链接导致整个用户空间不可用。
+- 浏览器侧只能接同源 BFF。BFF 验证门户短期签名后向 loopback supervisor 请求对应 Worker，并拒绝 Shell、Command、Share 等未授权接口。
+- BFF 仅接受门户短期签名身份，并把所有 Agent、SSE 和审批请求固定到该用户的独立 Worker。`external_directory` 永远拒绝，`bash` 和其他副作用工具要求审批；页面只提供单次允许或拒绝。
+- 模型层固定复用 NAS 现有 CLIProxyAPI，模型目录持续动态读取，默认型号由部署配置或当前可执行目录决定，不在源码和前端写死。目录变化只重载空闲 Worker；失败按 `workload + modelId` 记录，单次空回复只降级，连续失败达到阈值才隔离，不影响其他工作负载和模型。
 
 ## 本地检查
 
@@ -60,13 +90,15 @@ npm --prefix web run dev -- --port 18140
 
 然后用 Chrome 打开 `http://127.0.0.1:18140/`。Vite 将 `/api/agent` 转发到本地 `127.0.0.1:18141`。旧的白底三栏概念稿已废弃，当前视觉以门户 Codex 工作台为准，记录在 `design/design-spec.md` 和 `design/fidelity-ledger.md`。
 
+当前工作台把任务状态概览固定在会话标题下方，不随消息区滚动；独立会话按最近更新时间倒序排列，新发消息的会话会立即上浮。文件面板只在已经选中预览文件时，于预览工具栏提供轻量的放大/恢复图标，面板标题区只保留关闭入口。
+
 ## 历史项目和会话恢复
 
 2026-09-12 的隔离迁移样本固定读取以下本地快照，不连接 NAS 或正式 `codex.sqlite`：
 
 ```text
 /Users/fangjialiang/Documents/家庭网络中枢项目/04_工具与运维/本地备份/codex迁移源数据/2026-09-12/
-├── projects/       # NAS 项目空间副本，保留 .git、隐藏目录和独立会话附件
+├── projects/       # NAS 项目空间副本，保留 .git、隐藏目录和用户级“独立会话”文件夹
 ├── conversations/  # 工作台数据、导入包、附件和运行记录副本
 ├── database/       # 原始 WAL 文件集和通过 integrity_check 的一致性 SQLite 副本
 └── metadata/       # 项目盘点和逐文件 SHA-256 清单
@@ -120,7 +152,24 @@ npm --prefix web run dev
 ./scripts/start-isolated.sh
 ```
 
-启动脚本会生成独立 portal token、bridge token 和 OpenCode Basic Auth 密码，动态读取 NAS `/v1/models`，过滤图片模型与 `codex-auto-review`，再生成只读 `opencode.json`。任一新端口已被占用时脚本会拒绝启动。
+启动脚本会生成独立 portal token、supervisor token 和 OpenCode Basic Auth 密码，动态读取 NAS `/v1/model-capabilities`，只把明确声明 text input 与 text output 的模型纳入对话能力，再为每个 Worker 生成独立 `opencode.json`。模型名称不再参与图片/对话能力猜测。端口分配会持久化并跳过已占用端口；容器只有在 `system-kaoyan` Worker 真正 ready 后才宣告就绪。
+新发现的对话模型会通过同源 `GET /api/models` 出现在模型选择中；上下文或输出上限未补全时保持可见但禁用。BFF 在转发每个 prompt 前会再校验公共能力目录与当前 OpenCode 配置，`context=0`、不可用或尚未安全加载的模型不会进入 OpenCode。
+目录每 15 秒检查一次。Ryan、Lucian 和 `system-kaoyan` 在同一容器中分别运行独立 OpenCode Worker，使用独立端口、XDG data/config/cache/state 和 `opencode.db`。每个 Worker 发现目录变化后先进入自己的 `pending-idle`；只有 `/session/status` 为空且没有 BFF 持久 activity lease 时才重启该子进程并原子替换配置。刷新按单 Worker 滚动，避免目录更新形成重启峰值。其他 Worker、BFF、容器和 SQLite 不重启。旧共享库只作一次非破坏性拷贝迁入 Ryan Worker，Lucian 和考研系统从独立空库开始。每个 Worker 最多同时接受 2 个执行任务；状态检查与 prompt 提交在 BFF 内串行准入，超限请求返回类型化 `429 worker_capacity`。
+
+工作台使用版本化 Portal Projection，而不是让页面拼接 OpenCode 内部对象：`/api/workbench/bootstrap` 一次返回服务端归属的会话、状态、审批、模型与默认模型原因；`/api/workbench/sessions/:id/snapshot` 聚合消息、计划、子 Agent、轮次提纲、活动轨迹、统计和 Context Receipt。`/api/workbench/sessions/:id/events` 把 durable 投影事件写入 SQLite 并用单调 cursor 回放，OpenCode 流式 delta 作为 ephemeral 事件传输且不推进 cursor；页面只在流中断时降级为有界快照恢复。项目附件在提交时由服务端重新校验并生成 Context Receipt，收据随本次执行注入且写入 durable projection；Replay Lab 在独立隐藏目录真实重跑最近一轮并持久记录结果，不把指标快照比较伪装成执行回放。控制面还提供 Goals、Runtime Budget、只读 Skills、Workload Profile、Work Graph、子任务树和大工具结果受控回读。浏览器 localStorage 只保存最近选中的会话与已确认 durable cursor，不保存会话归属或事件正文。
+
+### 考研系统任务 API
+
+考研后端使用只读挂载的 `/volume1/docker/yeutech-agent/runtime/secrets/system-kaoyan.token` 作为 Bearer token，不将 token 下发给浏览器。所有请求固定到 `system:kaoyan` 服务身份的 `/projects/system/kaoyan` workspace，请求中不接受自定义目录。
+
+- `POST /api/system/tasks`：提交 `{sessionKey, kind, modelId, prompt, idempotencyKey?}`，`kind` 可为 `assistant`、`grading` 或 `explanation`。同一 `sessionKey` 持久复用同一 OpenCode session；带幂等键可防止阅卷任务重复提交。
+- `GET /api/system/models`：读取考研 Worker 已安全加载的模型和待空闲重载状态。
+- `GET /api/system/tasks/:taskId`：读取任务、最近 200 条消息与终态。
+- `GET /api/system/tasks/:taskId/events`：转发该考研 workspace 的 OpenCode SSE，响应头包含对应 `taskId` 和 `sessionId`。
+- `POST /api/system/tasks/:taskId/stop`：停止执行但保留任务和 session。
+- `POST /api/system/tasks/:taskId/resume`：可以 `{prompt?, modelId?}` 继续原 session；缺省时复用原任务内容和模型。
+
+任务映射保存在独立 `/runtime/system/kaoyan-tasks.sqlite`，使用 WAL、`busy_timeout=5000` 和唯一幂等约束，不与 OpenCode 的会话 SQLite 共用写锁。
 默认优先使用 `gpt-5.6-sol`；当动态目录中没有该模型时自动选择第一个对话模型。如果通过 `YEUTECH_DEFAULT_MODEL` 显式指定，则该模型必须存在于当前目录。
 
 停止样本：
@@ -153,7 +202,7 @@ npm --prefix web run dev
 | 500 | 189ms | 10.0ms | 101ms | 311KB | 420.8MB | 62.5MB |
 | 1000 | 195ms | 16.6ms | 110ms | 622KB | 448.1MB | 65.1MB |
 
-这组数据只衡量本地历史读取和恢复，不包含模型推理。为了避免长会话把全部消息一次性挂入浏览器，工作台现在使用 OpenCode 原生 cursor 分页：首次读取最近 200 条，并允许每次向前加载 200 条。Chrome 的 1000 条样本验证中，首屏 DOM 从 7135 个节点降到 1536 个节点；最新 200 条、向前加载到 400 条、输入与滚动均正常，控制台无错误。
+这组数据只衡量本地历史读取和恢复，不包含模型推理。为了避免长会话把全部消息一次性挂入浏览器，历史会话首次只读取最近 10 条，滚到顶部后每次再向前加载 10 条并保持当前滚动位置。既有迁移历史与 OpenCode 原生会话都有同样的被动分页通道；首屏、向前加载和刷新都不依赖用户 Worker。运行时投影与被动历史以消息 ID 去重，附件路径在刷新后仍恢复为结构化文件标签。
 
 可以随时重跑后端基准，脚本仅使用临时目录和 `19400/19401`，退出时会清理，不会停止当前隔离工作台：
 
@@ -170,4 +219,4 @@ npm --prefix web run dev
 5. 客户端中止时终止对应 SSH/curl 子进程。
 6. OpenCode 重启后会话可以从独立数据目录恢复。
 7. 全程不访问 `18110`、线上 `codex.sqlite` 或现有项目目录。
-8. BFF 覆盖浏览器传入的 `directory`，只允许访问固定样本工作区。
+8. BFF 覆盖浏览器传入的 `directory`，只允许访问当前签名用户的固定 Worker/workspace；另一用户不能读取或回复该用户的审批。

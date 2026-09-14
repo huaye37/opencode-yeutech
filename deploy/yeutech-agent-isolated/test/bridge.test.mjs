@@ -69,6 +69,23 @@ test("streams an allowed upstream response", async () => {
   });
 });
 
+test("allows the safe shared model capability catalog", async () => {
+  let selectedRoute;
+  await withServer(async (baseURL) => {
+    const response = await fetch(`${baseURL}/v1/model-capabilities`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { data: [] });
+    assert.deepEqual(selectedRoute, { method: "GET", path: "/v1/model-capabilities" });
+  }, {
+    spawnRequest: (route) => {
+      selectedRoute = route;
+      return fakeChild(["HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"data\":[]}"]);
+    },
+  });
+});
+
 test("forwards to a loopback CLIProxyAPI without exposing its key in curl arguments", async () => {
   let authorization = "";
   let receivedBody = "";

@@ -17,11 +17,24 @@ export default defineConfig(() => {
       port: 18140,
       strictPort: true,
       proxy: {
+        "/api/models": {
+          target: process.env.YEUTECH_AGENT_WEB_TARGET ?? "http://127.0.0.1:18141",
+          changeOrigin: false,
+          headers: token ? { authorization: `Bearer ${token}` } : {},
+        },
         "/api/agent": {
           target: process.env.YEUTECH_AGENT_WEB_TARGET ?? "http://127.0.0.1:18141",
           changeOrigin: false,
           rewrite: (requestPath) => requestPath.replace(/^\/api\/agent/, ""),
           headers: token ? { authorization: `Bearer ${token}` } : {},
+        },
+        "/api/migration": {
+          target: process.env.YEUTECH_AGENT_WEB_TARGET ?? "http://127.0.0.1:18141",
+          changeOrigin: false,
+        },
+        "/api/workbench": {
+          target: process.env.YEUTECH_AGENT_WEB_TARGET ?? "http://127.0.0.1:18141",
+          changeOrigin: false,
         },
       },
     },

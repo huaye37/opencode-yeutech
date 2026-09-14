@@ -1,6 +1,7 @@
 services:
   yeutech-agent:
     container_name: yeutech-agent
+    image: yeutech-agent:20260914-final-v36
     build:
       context: .
       args:
@@ -9,19 +10,32 @@ services:
     network_mode: host
     environment:
       YEUTECH_AGENT_RUNTIME_ROOT: /runtime
-      YEUTECH_AGENT_WORKSPACE: /projects/ryan
-      YEUTECH_AGENT_USERS_JSON: '[{"portalUserId":1,"username":"lucian","workspace":"/projects/lucian"},{"portalUserId":3,"username":"ryan","workspace":"/projects/ryan","migrationAccess":true}]'
+      YEUTECH_AGENT_PROJECTS_ROOT: /projects
+      YEUTECH_LEGACY_WORKSPACES_JSON: '{"1":"/projects/lucian","3":"/projects/ryan"}'
+      YEUTECH_SYSTEM_WORKSPACE: /projects/system/kaoyan
+      YEUTECH_SYSTEM_TASK_DATABASE: /runtime/system/kaoyan-tasks.sqlite
+      YEUTECH_CONTROL_PLANE_DATABASE: /runtime/control/control-plane.sqlite
       YEUTECH_MIGRATION_DATABASE: /data/codex-20260912.sqlite
       YEUTECH_MIGRATION_PROJECTS_ROOT: /projects
       YEUTECH_MIGRATION_USER_ID: "3"
       YEUTECH_MIGRATION_OWNER_DIRECTORY: ryan
       YEUTECH_CLI_PROXY_URL: http://127.0.0.1:18319
-      YEUTECH_OPENCODE_PORT: "18131"
+      YEUTECH_SYSTEM_WORKER_PORT: "18133"
+      YEUTECH_SUPERVISOR_PORT: "18141"
+      YEUTECH_WORKER_PORT_START: "18150"
+      YEUTECH_WORKER_PORT_END: "18249"
+      YEUTECH_WORKER_IDLE_EVICTION_MS: "1800000"
+      YEUTECH_MODEL_REFRESH_CONCURRENCY: "1"
       OPENCODE_DISABLE_AUTOUPDATE: "true"
     volumes:
       - /volume1/docker/yeutech-agent/runtime:/runtime
       - /volume1/docker/yeutech-agent/data:/data:ro
-      - /volume2/codex项目空间:/projects:ro
+      - type: bind
+        source: ${YEUTECH_PROJECTS_BIND_SOURCE:?Resolve the immutable project spaceId before running Compose}
+        target: /projects
+        read_only: false
+        bind:
+          create_host_path: false
       - /volume1/docker/yeutech-api-manager/secrets/api.key:/run/secrets/cliproxy.key:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18140/health"]

@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const DEFAULT_BODY_LIMIT = 2 * 1024 * 1024;
 const ALLOWED_ROUTES = new Map([
+  ["GET /v1/model-capabilities", { method: "GET", path: "/v1/model-capabilities" }],
   ["GET /v1/models", { method: "GET", path: "/v1/models" }],
   ["POST /v1/chat/completions", { method: "POST", path: "/v1/chat/completions" }],
 ]);
