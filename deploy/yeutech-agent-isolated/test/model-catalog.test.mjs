@@ -18,7 +18,11 @@ test("bounds a model catalog request when the provider never responds", async ()
 
 test("uses declared modalities instead of guessing capability from model IDs", () => {
   assert.equal(isConversationModel({ id: "gpt-5.6-sol", modalities: { input: ["text"], output: ["text"] } }), true);
-  assert.equal(isConversationModel("codex-auto-review"), false);
+  assert.equal(isConversationModel("codex-auto-review"), true);
+  assert.equal(isConversationModel({ id: "codex-auto-review", supportedWorkloads: ["review"], modalities: { input: ["text"], output: ["text"] } }), false);
+  assert.equal(isConversationModel({ id: "agent-model", supportedWorkloads: ["agent"], modalities: { input: ["text"], output: ["text"] } }), true);
+  assert.equal(isConversationModel({ id: "invalid-agent-image", supportedWorkloads: ["agent"], modalities: { input: ["text"], output: ["image"] } }), false);
+  assert.equal(isConversationModel({ id: "conversation-only", supportedWorkloads: ["conversation"], modalities: { input: ["text"], output: ["text"] } }), false);
   assert.equal(isConversationModel({ id: "gemini-image-preview", modalities: { input: ["text", "image"], output: ["image"] } }), false);
   assert.equal(isConversationModel({ id: "myimageish-model", modalities: { input: ["text"], output: ["text"] } }), true);
 });
@@ -31,8 +35,8 @@ test("normalizes, deduplicates, and sorts catalog", () => {
     { id: "foo-image", context_length: 0, max_output_tokens: 0 },
   ] });
   assert.deepEqual(result, [
-    { id: "a-chat", name: "A Chat", available: true, selectable: true, disabledReason: null, limit: { context: 128000, input: 119808, output: 8192 }, modalities: { input: ["text"], output: ["text"] } },
-    { id: "codex-auto-review", name: "codex-auto-review", available: true, selectable: false, disabledReason: "当前工作台不支持该模型类型", limit: { context: 1000, input: 900, output: 100 }, modalities: { input: [], output: [] } },
+    { id: "a-chat", name: "A Chat", available: true, selectable: true, disabledReason: null, limit: { context: 128000, input: 128000, output: 8192 }, modalities: { input: ["text"], output: ["text"] } },
+    { id: "codex-auto-review", name: "codex-auto-review", available: true, selectable: false, disabledReason: "当前工作台不支持该模型类型", limit: { context: 1000, input: 1000, output: 100 }, modalities: { input: [], output: [] } },
     { id: "foo-image", name: "foo-image", available: true, selectable: false, disabledReason: "能力信息待补全", limit: null, modalities: { input: [], output: [] } },
     { id: "z-chat", name: "z-chat", available: true, selectable: true, disabledReason: null, limit: { context: 200000, input: 180000, output: 20000 }, modalities: { input: ["text", "image"], output: ["text"] } },
   ]);
@@ -51,9 +55,22 @@ test("builds interactive OpenCode provider config", () => {
   assert.equal(config.permission.external_directory, "deny");
   assert.equal(config.provider.yeutech.options.baseURL, "http://cliproxy:8317/v1");
   assert.equal(config.provider.yeutech.options.apiKey, "{env:YEUTECH_CLI_PROXY_KEY}");
+  assert.deepEqual(config.instructions, ["/app/config/agent-workbench.md"]);
   assert.deepEqual(Object.keys(config.provider.yeutech.models), ["gpt-5.6-sol", "gpt-5.6-terra"]);
   assert.deepEqual(config.provider.yeutech.models["gpt-5.6-sol"].limit, { context: 200000, input: 180000, output: 20000 });
   assert.deepEqual(config.provider.yeutech.models["gpt-5.6-sol"].modalities.input, ["text", "image"]);
+});
+
+test("sets GPT and Gemini effective compaction budgets to 80%", () => {
+  const models = [
+    { id: "gpt-6-sol", name: "GPT", selectable: true, limit: { context: 51200, input: 51200, output: 10000 }, modalities: { input: ["text"], output: ["text"] } },
+    { id: "gemini-pro-agent", name: "Gemini", selectable: true, limit: { context: 1048576, input: 1048576, output: 65536 }, modalities: { input: ["text"], output: ["text"] } },
+  ];
+  const config = buildOpenCodeConfig(models);
+  const gpt = config.provider.yeutech.models["gpt-6-sol"].limit;
+  const gemini = config.provider.yeutech.models["gemini-pro-agent"].limit;
+  assert.equal(gpt.input - Math.min(20000, gpt.output), 40960);
+  assert.equal(gemini.input - Math.min(20000, gemini.output), 838860);
 });
 
 test("builds a deny-by-default read-only config for system workers", () => {
@@ -87,12 +104,12 @@ test("keeps incomplete discoveries visible but excludes them from execution", ()
     { id: "ready", context_length: 10000, max_output_tokens: 1000, supported_input_modalities: ["text"], supported_output_modalities: ["text"] },
     { id: "new-model", context_length: 0, max_output_tokens: 0, capability_status: "incomplete", selectable: false },
     { id: "oversized-input", context_length: 1000, max_input_tokens: 2000, max_output_tokens: 100, supported_input_modalities: ["text"], supported_output_modalities: ["text"] },
-    { id: "offline", available: false, context_length: 10000, max_output_tokens: 1000, supported_input_modalities: ["text"], supported_output_modalities: ["text"] },
+    { id: "offline", available: false, unavailable_reason: "credits_required", context_length: 10000, max_output_tokens: 1000, supported_input_modalities: ["text"], supported_output_modalities: ["text"] },
     { id: "ready", context_length: 1, max_output_tokens: 1 },
   ] });
   assert.deepEqual(models.map(({ id, selectable, disabledReason }) => ({ id, selectable, disabledReason })), [
     { id: "new-model", selectable: false, disabledReason: "能力信息待补全" },
-    { id: "offline", selectable: false, disabledReason: "模型当前不可用" },
+    { id: "offline", selectable: false, disabledReason: "当前渠道需要补充用量额度" },
     { id: "oversized-input", selectable: true, disabledReason: null },
     { id: "ready", selectable: true, disabledReason: null },
   ]);
@@ -110,6 +127,19 @@ test("requires explicit text input and output modalities and explains default se
   assert.deepEqual(selectDefaultModel(models, "missing"), { id: "actual-chat", reason: "first_runnable" });
 });
 
+test("uses supported workloads as the agent execution authority and keeps legacy modality compatibility", () => {
+  const models = normalizeModelCatalog({ data: [
+    { id: "agent", context_length: 10000, max_output_tokens: 1000, supported_input_modalities: ["text"], supported_output_modalities: ["text"], supported_workloads: ["conversation", "agent"] },
+    { id: "conversation", context_length: 10000, max_output_tokens: 1000, supported_input_modalities: ["text"], supported_output_modalities: ["text"], supported_workloads: ["conversation"] },
+    { id: "codex-auto-review", context_length: 10000, max_output_tokens: 1000, supported_input_modalities: ["text"], supported_output_modalities: ["text"], supported_workloads: ["review"] },
+    { id: "legacy", context_length: 10000, max_output_tokens: 1000, supported_input_modalities: ["text"], supported_output_modalities: ["text"] },
+  ] });
+  assert.deepEqual(runnableModels(models).map((model) => model.id), ["agent", "legacy"]);
+  assert.deepEqual(models.find((model) => model.id === "agent").supportedWorkloads, ["conversation", "agent"]);
+  assert.equal(models.find((model) => model.id === "conversation").disabledReason, "当前工作台不支持该模型类型");
+  assert.equal(models.find((model) => model.id === "codex-auto-review").disabledReason, "当前工作台不支持该模型类型");
+});
+
 test("mixed image output is not exposed as a text conversation model", () => {
   const [model] = normalizeModelCatalog({ data: [{
     id: "multimodal-output",
@@ -125,16 +155,19 @@ test("mixed image output is not exposed as a text conversation model", () => {
   assert.equal(model.disabledReason, "当前工作台不支持该模型类型");
 });
 
-test("reserves output tokens and clamps a standalone provider input maximum", () => {
+test("preserves standalone input ceiling and derives the 80% OpenCode trigger", () => {
   const [derived, explicitMaximum] = normalizeModelCatalog({ data: [
     { id: "derived", context_length: 10000, max_output_tokens: 2500, supported_input_modalities: ["text"], supported_output_modalities: ["text"] },
     { id: "explicit-overflow", context_length: 10000, max_input_tokens: 8000, max_output_tokens: 2500, supported_input_modalities: ["text"], supported_output_modalities: ["text"] },
   ] });
-  assert.deepEqual(derived.limit, { context: 10000, input: 7500, output: 2500 });
+  assert.deepEqual(derived.limit, { context: 10000, input: 10000, output: 2500 });
   assert.equal(derived.selectable, true);
-  assert.deepEqual(explicitMaximum.limit, { context: 10000, input: 7500, output: 2500 });
+  assert.deepEqual(explicitMaximum.limit, { context: 10000, input: 8000, output: 2500 });
   assert.equal(explicitMaximum.selectable, true);
   assert.equal(explicitMaximum.disabledReason, null);
+  const config = buildOpenCodeConfig([derived, explicitMaximum]);
+  assert.deepEqual(config.provider.yeutech.models.derived.limit, { context: 10000, input: 10000, output: 2500 });
+  assert.deepEqual(config.provider.yeutech.models["explicit-overflow"].limit, { context: 10000, input: 8000, output: 2500 });
 });
 
 test("fails closed when output consumes the context or input is explicitly zero", () => {
@@ -160,7 +193,10 @@ test("rejects payloads outside the strict capability-v1 contract", () => {
     { data: [{ id: "model", available: "yes" }] },
     { data: [{ id: "model", supported_input_modalities: ["text", "text"] }] },
     { data: [{ id: "model", supported_output_modalities: ["embedding"] }] },
+    { data: [{ id: "model", supported_workloads: ["agent", "agent"] }] },
+    { data: [{ id: "model", supported_workloads: ["unknown"] }] },
     { data: [{ id: "model", capability_status: "unknown" }] },
+    { data: [{ id: "model", unavailable_reason: "unknown" }] },
     { data: [{ id: "model", capability_status: "incomplete", selectable: true }] },
     { data: [{ id: "model", selectable: true, context_length: 1000, max_output_tokens: 100 }] },
     { data: [{ id: "model", selectable: true, context_length: 0, max_output_tokens: 0, supported_input_modalities: ["text"], supported_output_modalities: ["text"] }] },
@@ -196,6 +232,7 @@ test("accepts the complete safe metadata emitted by CLIProxyAPI", () => {
     supported_parameters: ["reasoning_effort"],
     supported_input_modalities: ["text", "image"],
     supported_output_modalities: ["text"],
+    supported_workloads: ["conversation", "agent"],
     thinking: { min: 0, max: 32_768, zero_allowed: true, dynamic_allowed: true, levels: ["low", "high"] },
     supports_web_search: true,
     available: true,

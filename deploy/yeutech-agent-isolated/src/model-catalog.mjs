@@ -1,7 +1,8 @@
 export function isConversationModel(modelOrID) {
   const id = typeof modelOrID === "string" ? modelOrID : modelOrID?.id;
-  if (typeof id !== "string" || id.length === 0 || id === "codex-auto-review") return false;
+  if (typeof id !== "string" || id.length === 0) return false;
   if (typeof modelOrID === "string") return true;
+  if (Array.isArray(modelOrID?.supportedWorkloads) && !modelOrID.supportedWorkloads.includes("agent")) return false;
   const input = modelOrID?.modalities?.input;
   const output = modelOrID?.modalities?.output;
   return Array.isArray(input) && input.includes("text") && Array.isArray(output) && output.length === 1 && output[0] === "text";
@@ -14,11 +15,19 @@ function positiveInteger(value) {
 const CAPABILITY_FIELDS = new Set([
   "id", "object", "created", "owned_by", "type", "display_name", "description",
   "context_length", "max_input_tokens", "max_output_tokens", "supported_parameters",
-  "supported_input_modalities", "supported_output_modalities", "thinking", "supports_web_search",
-  "available", "selectable", "capability_status",
+  "supported_input_modalities", "supported_output_modalities", "supported_workloads", "thinking", "supports_web_search",
+  "available", "selectable", "unavailable_reason", "capability_status",
 ]);
 const CAPABILITY_STATUSES = new Set(["incomplete", "complete", "ready"]);
 const CAPABILITY_MODALITIES = new Set(["text", "image", "audio", "video"]);
+const CAPABILITY_WORKLOADS = new Set(["conversation", "agent", "review", "image_generation"]);
+const UNAVAILABLE_REASONS = new Set(["auth_unavailable", "model_not_found", "credits_required", "cooldown"]);
+const UNAVAILABLE_REASON_MESSAGES = {
+  auth_unavailable: "当前没有可用的登录授权或 API 凭据",
+  model_not_found: "当前路由不支持该模型",
+  credits_required: "当前渠道需要补充用量额度",
+  cooldown: "当前渠道处于冷却期",
+};
 
 function capabilityError(path, message) {
   return new TypeError(`Model capability catalog ${path} ${message}`);
@@ -107,6 +116,12 @@ export function validateCapabilityCatalog(payload) {
     for (const field of ["context_length", "max_input_tokens", "max_output_tokens"]) validateInteger(entry[field], field, index);
     validateStringArray(entry.supported_parameters, "supported_parameters", index);
     for (const field of ["supported_input_modalities", "supported_output_modalities"]) validateModalities(entry[field], field, index);
+    validateStringArray(entry.supported_workloads, "supported_workloads", index);
+    for (const workload of entry.supported_workloads ?? []) {
+      if (!CAPABILITY_WORKLOADS.has(workload)) {
+        throw capabilityError(`data[${index}].supported_workloads`, `contains unsupported workload: ${String(workload)}`);
+      }
+    }
     validateThinking(entry.thinking, index);
     if (entry.supports_web_search !== undefined && typeof entry.supports_web_search !== "boolean") {
       throw capabilityError(`data[${index}].supports_web_search`, "must be a boolean");
@@ -116,6 +131,9 @@ export function validateCapabilityCatalog(payload) {
     }
     if (entry.capability_status !== undefined && !CAPABILITY_STATUSES.has(entry.capability_status)) {
       throw capabilityError(`data[${index}].capability_status`, "has an unsupported status");
+    }
+    if (entry.unavailable_reason !== undefined && !UNAVAILABLE_REASONS.has(entry.unavailable_reason)) {
+      throw capabilityError(`data[${index}].unavailable_reason`, "has an unsupported reason");
     }
     if (entry.capability_status === "incomplete" && entry.selectable === true) {
       throw capabilityError(`data[${index}].selectable`, "must be false when capability_status is incomplete");
@@ -170,26 +188,21 @@ export function normalizeModelCatalog(payload) {
 
     const output = positiveInteger(entry.max_output_tokens);
     const context = positiveInteger(entry.context_length);
-    // OpenCode treats input and output as budgets within one context window.
-    // If the producer does not publish max_input_tokens, reserve the declared
-    // maximum output rather than incorrectly offering the whole window twice.
+    // Preserve the provider's standalone input ceiling. The OpenCode config
+    // generator reserves response space when deriving its compaction trigger.
     const hasDeclaredInput = Object.hasOwn(entry, "max_input_tokens");
     const declaredInput = positiveInteger(entry.max_input_tokens);
-    const reservableInput = context && output && context > output ? context - output : null;
-    // CLIProxyAPI publishes the provider's standalone maximum input budget.
-    // OpenCode needs a simultaneous input/output budget, so reserve the output
-    // window and clamp a larger declared input limit instead of disabling an
-    // otherwise valid model.
-    const input = !reservableInput ? null : hasDeclaredInput ? (declaredInput ? Math.min(declaredInput, reservableInput) : null) : reservableInput;
+    const input = !context || !output || context <= output ? null
+      : hasDeclaredInput ? (declaredInput ? Math.min(declaredInput, context) : null) : context;
     const modalities = {
       input: Array.isArray(entry.supported_input_modalities) ? entry.supported_input_modalities : [],
       output: Array.isArray(entry.supported_output_modalities) ? entry.supported_output_modalities : [],
     };
-    const normalized = { id: entry.id, modalities };
-    const explicitlyNonConversation = entry.id === "codex-auto-review" ||
-      (modalities.input.length > 0 && modalities.output.length > 0 && !isConversationModel(normalized));
+    const supportedWorkloads = Array.isArray(entry.supported_workloads) ? entry.supported_workloads : undefined;
+    const normalized = { id: entry.id, modalities, ...(supportedWorkloads ? { supportedWorkloads } : {}) };
+    const explicitlyNonConversation = (supportedWorkloads || (modalities.input.length > 0 && modalities.output.length > 0)) && !isConversationModel(normalized);
     let disabledReason = "";
-    if (entry.available === false) disabledReason = "模型当前不可用";
+    if (entry.available === false) disabledReason = UNAVAILABLE_REASON_MESSAGES[entry.unavailable_reason] || "模型当前不可用";
     else if (explicitlyNonConversation) disabledReason = "当前工作台不支持该模型类型";
     else if (entry.selectable === false || entry.capability_status === "incomplete" || !context || !input || !output) {
       disabledReason = "能力信息待补全";
@@ -205,6 +218,7 @@ export function normalizeModelCatalog(payload) {
       disabledReason: disabledReason || null,
       limit: context && input && output ? { context, input, output } : null,
       modalities,
+      ...(supportedWorkloads ? { supportedWorkloads } : {}),
     }];
   });
 
