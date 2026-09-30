@@ -381,6 +381,18 @@ function compactionContext(context: string) {
 
 describe("session.compaction.isOverflow", () => {
   it.live(
+    "compacts at 80% of context even when the provider allows more",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const compact = yield* SessionCompaction.Service
+        const model = createModel({ context: 200_000, output: 10_000 })
+        const tokens = { input: 159_000, output: 1_000, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
+      }),
+    ),
+  )
+
+  it.live(
     "returns true when token count exceeds usable context",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
