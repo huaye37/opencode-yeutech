@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fetchModelCatalog, selectDefaultModel } from "./model-catalog.mjs";
+import { reasoningVariant } from "./reasoning-preference.mjs";
 import { createSystemTaskStore } from "./system-task-store.mjs";
 import { extendActivityLease, releaseActivityLease, reserveActivityLease } from "./activity-lease.mjs";
 import { buildContextPack, compareReplay, evaluateEvidence, modelEligibility, runtimeBudget, WORKLOAD_PROFILES } from "./control-plane.mjs";
@@ -17,8 +18,60 @@ import { createProjectionEventStore } from "./projection-event-store.mjs";
 import { createReplayStore } from "./replay-store.mjs";
 import { auditReplayTrajectory, buildReplayPrompt } from "./replay-policy.mjs";
 import { createProjectPreferenceStore } from "./project-preference-store.mjs";
+import { createSessionDraftStore } from "./session-draft-store.mjs";
+import { createSessionInboxStore } from "./session-inbox-store.mjs";
+import { createSessionPolicyStore } from "./session-policy-store.mjs";
+import { createPluginManager } from "./plugin-manager.mjs";
+import { createImageGenerationPlugin } from "./image-generation-plugin.mjs";
+import { createImagePluginService } from "./image-plugin-service.mjs";
+import { createMacCapabilityPluginService, createSshMacCapabilityExecutor } from "./mac-capability-plugin-service.mjs";
 
 const DEFAULT_BODY_LIMIT = 4 * 1024 * 1024;
+const RUNTIME_BLOCKING_ERRORS = new Set(["auth_unavailable", "model_not_found", "route_disabled", "capability_incomplete"]);
+const PERMISSION_MODES = new Set(["ask", "smart", "full"]);
+
+async function proxyMaintenanceStatus(url = process.env.YEUTECH_PROXY_MAINTENANCE_URL || "http://127.0.0.1:18321/maintenance") {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(300) });
+    return response.ok ? await response.json() : {};
+  } catch { return {}; }
+}
+
+function inboxMessage(item) {
+  const rawText = String(item?.payload?.parts?.find((part) => part?.type === "text")?.text || "");
+  const text = rawText.replace(/^\[YEUTECH Context Receipt\][\s\S]*?\[\/YEUTECH Context Receipt\]\s*/u, "");
+  return {
+    id: item.id,
+    role: "user",
+    text,
+    createdAt: item.createdAt,
+    queue: { status: item.status, position: item.position },
+  };
+}
+
+export function sessionPermissionRules(mode = "smart", toolPolicy = {}) {
+  const selected = PERMISSION_MODES.has(mode) ? mode : "smart";
+  const rules = selected === "ask"
+    ? [
+        { permission: "*", pattern: "*", action: "ask" },
+        ...["read", "glob", "grep", "list", "lsp"].map((permission) => ({ permission, pattern: "*", action: "allow" })),
+        { permission: "edit", pattern: "*", action: "ask" },
+        { permission: "bash", pattern: "*", action: "ask" },
+      ]
+    : selected === "full"
+      ? [{ permission: "*", pattern: "*", action: "allow" }]
+      : [
+          { permission: "*", pattern: "*", action: "ask" },
+          ...["read", "glob", "grep", "list", "lsp", "edit"].map((permission) => ({ permission, pattern: "*", action: "allow" })),
+          { permission: "bash", pattern: "*", action: "ask" },
+        ];
+  for (const [tool, enabled] of Object.entries(toolPolicy)) {
+    if (!enabled) rules.push({ permission: tool, pattern: "*", action: "deny" });
+  }
+  // The portal's per-user workspace boundary is never relaxed by a UI mode.
+  rules.push({ permission: "external_directory", pattern: "*", action: "deny" });
+  return rules;
+}
 const HOP_BY_HOP_HEADERS = new Set(["connection", "content-length", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
 const STATIC_ROUTES = new Map([
   ["GET /global/health", true], ["GET /event", true], ["GET /session", true], ["POST /session", true],
@@ -65,7 +118,7 @@ function authenticateIdentity(header, secret, nowSeconds = Math.floor(Date.now()
   }
   if (expiresAt < nowSeconds) return { statusCode: 401, message: "Portal identity has expired" };
   const username = String(payload?.username || "");
-  if (!/^[a-zA-Z0-9._-]{1,80}$/.test(username)) return { statusCode: 401, message: "Portal identity is invalid" };
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}._-]{1,23}$/u.test(username)) return { statusCode: 401, message: "Portal identity is invalid" };
   return { user: { portalUserId: userId, username }, payload };
 }
 
@@ -239,7 +292,7 @@ export function createAgentBff(options) {
     const portalUserId = Number(user.portalUserId);
     const workspace = String(user.workspace || "");
     if (!Number.isSafeInteger(portalUserId) || portalUserId <= 0) throw new Error("Agent portal user ID is invalid");
-    if (!/^[a-zA-Z0-9._-]{1,80}$/.test(String(user.username || ""))) throw new Error("Agent username is invalid");
+    if (!/^[\p{L}\p{N}][\p{L}\p{N}._-]{1,23}$/u.test(String(user.username || ""))) throw new Error("Agent username is invalid");
     if (!path.isAbsolute(workspace)) throw new Error("Agent workspace must be an absolute path");
     return [portalUserId, { ...user, portalUserId, username: String(user.username), workspace, upstream: user.workerURL ? new URL(user.workerURL) : null, modelConfigPath: user.modelConfigPath, modelReloadStatePath: user.modelReloadStatePath }];
   }));
@@ -258,6 +311,8 @@ export function createAgentBff(options) {
   const modelCatalogURL = options.modelCatalogURL ? new URL(options.modelCatalogURL) : null;
   const modelCatalogToken = options.modelCatalogToken;
   const modelCatalogCacheMs = options.modelCatalogCacheMs ?? 5_000;
+  const consumerModelPolicyFile = options.consumerModelPolicyFile || "";
+  const consumerId = options.consumerId || "ai-workbench";
   const maxConcurrentPerWorker = options.maxConcurrentPerWorker ?? 2;
   let modelCatalogCache = null;
   let modelCatalogExpiresAt = 0;
@@ -265,6 +320,18 @@ export function createAgentBff(options) {
   const migrationUserId = Number(options.migrationUserId ?? 3);
   let runtimeStateMutation = Promise.resolve();
   const admissions = new Map();
+  const sessionInboxStore = options.controlPlaneDatabasePath ? createSessionInboxStore(options.controlPlaneDatabasePath) : null;
+  const sessionPolicyStore = options.controlPlaneDatabasePath ? createSessionPolicyStore(options.controlPlaneDatabasePath) : null;
+  const inboxDrains = new Set();
+
+  function pluginWorkerUser(header) {
+    const token = typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : "";
+    const match = /^v1\.([1-9][0-9]*)\.([A-Za-z0-9_-]{43})$/.exec(token);
+    if (!match || !options.pluginServiceToken) return null;
+    const portalUserId = Number(match[1]);
+    const expected = createHmac("sha256", options.pluginServiceToken).update(`portal:${portalUserId}`).digest("base64url");
+    return secureEqual(match[2], expected) ? portalUserId : null;
+  }
 
   async function withAdmission(key, operation) {
     const previous = admissions.get(key) ?? Promise.resolve();
@@ -316,6 +383,38 @@ export function createAgentBff(options) {
       });
     }
   }
+
+  async function drainInboxItem(candidate) {
+    const key = `${candidate.portalUserId}:${candidate.sessionId}`;
+    if (inboxDrains.has(key)) return;
+    inboxDrains.add(key);
+    try {
+      await withAdmission(`inbox:${key}`, async () => {
+        const worker = await ensureWorker({ portalUserId: candidate.portalUserId, username: candidate.username });
+        const statuses = await workerRequest(worker, "/session/status");
+        const steering = Boolean(statuses?.[candidate.sessionId]);
+        const item = sessionInboxStore.claim(candidate.id);
+        if (!item) return;
+        try {
+          if (worker.activityLeaseFile && !steering) {
+            const reservation = await reserveActivityLease(worker, { sessionId: item.sessionId, reasons: ["portal-prompt"], durationMs: options.activityLeaseMs, maxActive: maxConcurrentPerWorker });
+            if (reservation.sessionBusy || reservation.capacityReached) { sessionInboxStore.requeue(item.id); return; }
+          }
+          await workerRequest(worker, `/session/${item.sessionId}/prompt_async`, { method: "POST", body: item.payload });
+          sessionInboxStore.complete(item.id);
+          projectionStore?.append(item.portalUserId, item.sessionId, `inbox:${item.id}`, "inbox.submitted", { id: item.id, status: "submitted", delivery: steering ? "steer" : "next", submittedAt: Date.now() });
+        } catch (error) {
+          sessionInboxStore.requeue(item.id);
+          if (worker.activityLeaseFile && !steering) await releaseActivityLease(worker, { sessionId: item.sessionId, reasons: ["portal-prompt"] }).catch(() => undefined);
+        }
+      });
+    } finally { inboxDrains.delete(key); }
+  }
+
+  const inboxTimer = sessionInboxStore ? setInterval(() => {
+    for (const item of sessionInboxStore.pending()) void drainInboxItem(item);
+  }, options.sessionInboxPollMs ?? 1_000) : null;
+  inboxTimer?.unref?.();
 
   async function projectionMessagePages(worker, sessionID, directory = worker.workspace) {
     const pages = [];
@@ -397,9 +496,37 @@ export function createAgentBff(options) {
     finally { database?.close(); }
   }
 
-  async function models() {
+  // History must remain readable while a user's OpenCode worker is asleep.
+  // The native database is the authoritative durable record; this path is
+  // strictly read-only and deliberately does not call ensureWorker().
+  function passiveSessionProjection(worker, sessionID, workload = "general-agent") {
+    const databasePath = worker?.databasePath || (worker?.root ? path.join(worker.root, "xdg", "data", "opencode", "opencode.db") : "");
+    if (!databasePath) throw portalError("Runtime history is unavailable", { statusCode: 404, code: "runtime_history_unavailable", retryable: false, scope: "session" });
+    let database;
+    try {
+      database = new DatabaseSync(databasePath, { readOnly: true });
+      const sessionRow = database.prepare("SELECT id, directory, title, model, time_created, time_updated FROM session WHERE id = ?").get(sessionID);
+      if (!sessionRow) throw portalError("Runtime session was not found", { statusCode: 404, code: "session_not_found", retryable: false, scope: "session" });
+      let model = null;
+      try { model = sessionRow.model ? JSON.parse(sessionRow.model) : null; } catch { /* legacy record */ }
+      const parts = database.prepare("SELECT data FROM part WHERE message_id = ? ORDER BY time_created ASC, id ASC");
+      const records = database.prepare("SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created ASC, id ASC").all(sessionID).map((row) => {
+        let info = {};
+        try { info = JSON.parse(row.data); } catch { /* malformed record is ignored below */ }
+        const messageParts = parts.all(row.id).flatMap((part) => {
+          try { return [JSON.parse(part.data)]; } catch { return []; }
+        });
+        return { info: { ...info, id: row.id, sessionID }, parts: messageParts };
+      });
+      const session = { id: sessionRow.id, directory: sessionRow.directory, title: sessionRow.title, model, time: { created: sessionRow.time_created, updated: sessionRow.time_updated }, status: null };
+      const projection = projectSessionPages(session, [records], { pageOrder: "oldest-first", complete: true, sessionState: null, context: { workload }, inlineToolResultLimit: options.inlineToolResultLimit });
+      return { ...projection, session, permissions: [], childTree: [], plan: [], artifacts: [], evidence: [] };
+    } finally { database?.close(); }
+  }
+
+  async function models({ fresh = false } = {}) {
     if (!modelCatalogURL || !modelCatalogToken) throw Object.assign(new Error("Model capability catalog is not configured"), { statusCode: 503 });
-    if (modelCatalogCache && Date.now() < modelCatalogExpiresAt) return modelCatalogCache;
+    if (!fresh && modelCatalogCache && Date.now() < modelCatalogExpiresAt) return modelCatalogCache;
     if (!modelCatalogRequest) {
       modelCatalogRequest = fetchModelCatalog({ baseURL: modelCatalogURL, token: modelCatalogToken, timeoutMs: options.modelCatalogTimeoutMs ?? 5_000 })
         .then((catalog) => {
@@ -416,21 +543,22 @@ export function createAgentBff(options) {
     // while one bounded refresh runs in the background. A temporarily stalled
     // catalog must not stall the workbench bootstrap or discard known-safe
     // model bounds.
-    if (modelCatalogCache) {
+    if (!fresh && modelCatalogCache) {
       modelCatalogRequest.catch(() => undefined);
       return modelCatalogCache;
     }
     return modelCatalogRequest;
   }
 
-  async function executableModels(configPath = options.modelConfigPath, workload = "general-agent") {
-    const catalog = await models();
+  async function executableModels(configPath = options.modelConfigPath, workload = "general-agent", catalogOptions) {
+    const catalog = await models(catalogOptions);
     const states = await runtimeStates();
     const runtimeCatalog = catalog.map((model) => {
       const state = states[runtimeStateKey(model.id, workload)];
       if (!state) return { ...model, runtimeCompatibility: { status: "untested" } };
       const retry = Number(state.retryAfter || 0) <= Date.now();
-      if (state.status === "quarantined" && !retry) return { ...model, selectable: false, disabledReason: `运行兼容性暂不可用：${state.reason}`, runtimeCompatibility: state };
+      const blocksSelection = workload !== "general-agent" || RUNTIME_BLOCKING_ERRORS.has(state.reason);
+      if (state.status === "quarantined" && blocksSelection && !retry) return { ...model, selectable: false, disabledReason: `运行兼容性暂不可用：${state.reason}`, runtimeCompatibility: state };
       return { ...model, runtimeCompatibility: state.status === "quarantined" ? { ...state, status: "reprobe" } : state };
     });
     if (!configPath) return runtimeCatalog;
@@ -441,28 +569,95 @@ export function createAgentBff(options) {
       : model);
   }
 
-  async function recordRuntimeOutcome(snapshot, workload = "general-agent") {
+  // The API platform owns the policy document. This BFF consumes it at request
+  // time, so a saved policy takes effect without keeping a static model list.
+  async function consumerModelPolicy(policyConsumerId = consumerId) {
+    if (!consumerModelPolicyFile) return { enabled: false, allowedModelIds: new Set() };
+    try {
+      const value = JSON.parse(await readFile(consumerModelPolicyFile, "utf8"));
+      const policy = value?.consumers?.[policyConsumerId];
+      const allowedModelIds = new Set(
+        (Array.isArray(policy?.allowedModelIds) ? policy.allowedModelIds : [])
+          .map((model) => String(model || "").trim())
+          .filter((model) => /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model)),
+      );
+      return { enabled: policy?.enabled === true, allowedModelIds };
+    } catch {
+      // A missing policy document must not make existing history unavailable.
+      return { enabled: false, allowedModelIds: new Set() };
+    }
+  }
+
+  async function consumerExecutableModels(configPath = options.modelConfigPath, workload = "general-agent", catalogOptions, policyConsumerId = consumerId) {
+    const [catalog, policy] = await Promise.all([
+      executableModels(configPath, workload, catalogOptions),
+      consumerModelPolicy(policyConsumerId),
+    ]);
+    return policy.enabled
+      ? catalog.filter((model) => policy.allowedModelIds.has(model.id))
+      : catalog;
+  }
+
+  async function recordRuntimeOutcome(snapshot, workload = "general-agent", portalUserId) {
     const modelID = snapshot?.context?.model;
     if (!modelID || !options.modelRuntimeStatePath) return;
     const assistants = (snapshot.messages || []).filter((message) => message.role === "assistant");
     const latest = assistants.at(-1);
     if (!latest?.completedAt) return;
+    const claimKey = `runtime-outcome:${latest.id}`;
+    if (projectionStore && !projectionStore.claim(portalUserId, snapshot.session.id, claimKey)) return;
     const hasUsefulResult = Boolean(String(latest.text || "").trim()) || (snapshot.trajectory || []).some((item) => item.type === "tool" && item.status === "completed");
     const key = runtimeStateKey(modelID, workload);
-    if (hasUsefulResult && !latest.error) {
-      await updateRuntimeState(key, { status: "verified", scope: runtimeScope(workload), failureCount: 0, verifiedAt: new Date().toISOString() });
-      return;
+    try {
+      if (hasUsefulResult && !latest.error) {
+        await updateRuntimeState(key, { status: "verified", scope: runtimeScope(workload), failureCount: 0, verifiedAt: new Date().toISOString() });
+        return;
+      }
+      const previous = (await runtimeStates())[key] || {};
+      const failureCount = Number(previous.failureCount || 0) + 1;
+      const threshold = Number(options.modelQuarantineThreshold ?? 3);
+      const reason = latest.error?.code || "empty_result";
+      const quarantined = RUNTIME_BLOCKING_ERRORS.has(reason) && failureCount >= 1;
+      await updateRuntimeState(key, {
+        status: quarantined ? "quarantined" : "degraded",
+        scope: runtimeScope(workload), failureCount,
+        reason,
+        failedAt: new Date().toISOString(),
+        retryAfter: quarantined ? Date.now() + (options.modelQuarantineMs ?? 3_600_000) : null,
+      });
+    } catch (error) {
+      projectionStore?.releaseClaim(portalUserId, snapshot.session.id, claimKey);
+      throw error;
     }
-    const previous = (await runtimeStates())[key] || {};
-    const failureCount = Number(previous.failureCount || 0) + 1;
-    const threshold = Number(options.modelQuarantineThreshold ?? 3);
-    await updateRuntimeState(key, {
-      status: failureCount >= threshold ? "quarantined" : "degraded",
-      scope: runtimeScope(workload), failureCount,
-      reason: latest.error?.code || "empty_result",
-      failedAt: new Date().toISOString(),
-      retryAfter: failureCount >= threshold ? Date.now() + (options.modelQuarantineMs ?? 3_600_000) : null,
-    });
+  }
+
+  async function terminalFailure(payload) {
+    if (String(payload?.type || "") !== "session.error") return null;
+    const source = payload?.properties?.error || payload?.properties || {};
+    const clean = (value, fallback, maximum) => String(value || fallback).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maximum) || fallback;
+    const statusCode = Number(source?.data?.statusCode || source?.statusCode || 0);
+    let responseError = {};
+    try { responseError = JSON.parse(source?.data?.responseBody || "")?.error || {}; }
+    catch { responseError = {}; }
+    const upstreamMessage = clean(responseError.message || source?.data?.message || source?.message, "Agent execution failed", 1_000);
+    if (/ECONNRESET|socket hang up|connection (?:reset|lost|closed|refused)|fetch failed|terminated|network error|upstream connect|incomplete stream/i.test(upstreamMessage)
+        && (await proxyMaintenanceStatus(options.proxyMaintenanceURL)).recentInterrupted === true) {
+      return { code: "workbench_updating", message: "AI 工作台正在更新，请稍后在原会话重试" };
+    }
+    let code = clean(source?.data?.code || responseError.code || source?.code || source?.name, "runtime_error", 120);
+    if (statusCode === 404 || /model(?:\s|:).*not found|model: /i.test(upstreamMessage)) code = "model_not_found";
+    else if (/content exists risk/i.test(upstreamMessage)) code = "content_risk";
+    else if ([401, 403].includes(statusCode)) code = "auth_unavailable";
+    else if (statusCode === 429) code = "cooldown";
+    else if (statusCode >= 500) code = "upstream_unavailable";
+    else if (statusCode === 400 && code === "APIError") code = "upstream_invalid_request";
+    const message = code === "content_risk"
+      ? "当前模型不能处理这段会话内容。模型原始返回：Content Exists Risk（内容风险）。这表示该模型拒绝了当前上下文，可以更换模型，或新建会话、整理长对话后重试。"
+      : upstreamMessage;
+    return {
+      code,
+      message,
+    };
   }
 
   function replayMetrics(snapshot) {
@@ -515,6 +710,42 @@ export function createAgentBff(options) {
     ? createProjectionEventStore(options.projectionDatabasePath || options.controlPlaneDatabasePath) : null;
   const replayStore = options.controlPlaneDatabasePath ? createReplayStore(options.controlPlaneDatabasePath) : null;
   const projectPreferenceStore = options.controlPlaneDatabasePath ? createProjectPreferenceStore(options.controlPlaneDatabasePath) : null;
+  const sessionDraftStore = options.controlPlaneDatabasePath ? createSessionDraftStore(options.controlPlaneDatabasePath) : null;
+  const pluginManager = options.pluginManager ?? (options.controlPlaneDatabasePath ? createPluginManager(options.controlPlaneDatabasePath) : null);
+  const imagePlugin = options.imagePluginService ?? (options.pluginServiceToken && options.controlPlaneDatabasePath && options.projectsRoot && modelCatalogURL && modelCatalogToken
+    ? (() => {
+      const upstreamImagePlugin = createImageGenerationPlugin({
+        baseURL: new URL("v1/", modelCatalogURL.toString().endsWith("/") ? modelCatalogURL : `${modelCatalogURL}/`),
+        token: modelCatalogToken,
+        allowedImageHosts: options.imageDownloadHosts || [],
+      });
+      const policyScopedImagePlugin = {
+        async listModels({ consumer = "creator-api", signal } = {}) {
+          const [models, policy] = await Promise.all([upstreamImagePlugin.listModels({ signal }), consumerModelPolicy(consumer)]);
+          return policy.enabled ? models.filter((model) => policy.allowedModelIds.has(model.id)) : models;
+        },
+        async generate(input = {}) {
+          const consumer = String(input.consumer || "creator-api");
+          const [models, policy] = await Promise.all([upstreamImagePlugin.listModels({ signal: input.signal }), consumerModelPolicy(consumer)]);
+          if (policy.enabled && input.model && !policy.allowedModelIds.has(input.model)) throw Object.assign(new Error("Requested image model is not enabled for this consumer"), { statusCode: 409, code: "IMAGE_MODEL_FORBIDDEN" });
+          if (input.model && !models.some((model) => model.id === input.model)) throw Object.assign(new Error("Requested image model is unavailable"), { statusCode: 409, code: "IMAGE_MODEL_UNAVAILABLE" });
+          return upstreamImagePlugin.generate(input);
+        },
+      };
+      return createImagePluginService({
+        databasePath: options.controlPlaneDatabasePath,
+        projectsRoot: options.projectsRoot,
+        provider: policyScopedImagePlugin,
+      });
+    })()
+    : null);
+  const macCapabilityPlugin = options.macCapabilityPluginService ?? (options.pluginServiceToken && options.controlPlaneDatabasePath && options.projectsRoot
+    ? createMacCapabilityPluginService({
+      databasePath: options.controlPlaneDatabasePath,
+      projectsRoot: options.projectsRoot,
+      executor: options.macCapabilityExecutor ?? createSshMacCapabilityExecutor(options.macCapabilitySsh),
+    })
+    : null);
   const workspaceFileStores = new Map();
   const replayTasks = new Set();
   const systemWorkerLease = options.systemActivityLeaseFile ? { id: "system-kaoyan", activityLeaseFile: options.systemActivityLeaseFile } : null;
@@ -543,23 +774,60 @@ export function createAgentBff(options) {
     });
   }
 
+  async function locateSession(worker, sessionID, directory = worker.workspace) {
+    const session = await workerRequest(worker, `/session/${sessionID}`, { directory });
+    const root = path.resolve(worker.workspace);
+    const candidate = path.resolve(String(session?.directory || directory));
+    if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
+      throw portalError("Session workspace is outside the managed user root", { statusCode: 403, code: "session_workspace_forbidden", retryable: false, scope: "session" });
+    }
+    const rootReal = await realpath(root).catch((error) => {
+      if (!options.ensureWorker && error?.code === "ENOENT") return null;
+      throw portalError("Managed user workspace is unavailable", { statusCode: 409, code: "session_workspace_unavailable", retryable: true, scope: "session", cause: error });
+    });
+    if (!rootReal) return { session, directory: candidate };
+    const candidateReal = await realpath(candidate).catch((error) => {
+      throw portalError("Session workspace is unavailable", { statusCode: 409, code: "session_workspace_unavailable", retryable: true, scope: "session", cause: error });
+    });
+    if (candidateReal !== rootReal && !candidateReal.startsWith(`${rootReal}${path.sep}`)) {
+      throw portalError("Session workspace is outside the managed user root", { statusCode: 403, code: "session_workspace_forbidden", retryable: false, scope: "session" });
+    }
+    return { session, directory: candidateReal };
+  }
+
   async function sessionProjection(worker, sessionID, workload = "general-agent", directory = worker.workspace) {
-    const [session, messagePages, states, permissions, children, todos] = await Promise.all([
-      workerRequest(worker, `/session/${sessionID}`, { directory }), projectionMessagePages(worker, sessionID, directory), workerRequest(worker, "/session/status", { directory }), workerRequest(worker, "/permission", { directory }),
-      workerRequest(worker, `/session/${sessionID}/children`, { directory }), workerRequest(worker, `/session/${sessionID}/todo`, { directory }),
+    const located = await locateSession(worker, sessionID, directory);
+    const [messagePages, states, permissions, children, todos] = await Promise.all([
+      projectionMessagePages(worker, sessionID, located.directory), workerRequest(worker, "/session/status", { directory: located.directory }), workerRequest(worker, "/permission", { directory: located.directory }),
+      workerRequest(worker, `/session/${sessionID}/children`, { directory: located.directory }), workerRequest(worker, `/session/${sessionID}/todo`, { directory: located.directory }),
     ]);
+    const session = located.session;
     const sessionState = states?.[sessionID] || null;
     const projection = projectSessionPages(session, messagePages.pages, {
       pageOrder: "newest-first", complete: messagePages.complete, nextCursor: messagePages.nextCursor,
       sessionState, children: children || [], todos: todos || [], context: { workload },
       inlineToolResultLimit: options.inlineToolResultLimit,
     });
+    const durableSession = projectionStore?.latestValue(worker.portalUserId, sessionID, "session");
+    for (const message of projection.messages) {
+      const durableMessage = projectionStore?.latestValue(worker.portalUserId, sessionID, `message:${message.id}`);
+      if (durableMessage?.error && (!message.text && !message.completedAt || message.error?.code === "empty_response")) {
+        message.error = durableMessage.error;
+        message.completedAt ||= durableMessage.completedAt;
+      }
+    }
+    const inbox = sessionInboxStore?.forSession(worker.portalUserId, sessionID).map(inboxMessage) || [];
     return {
       contractVersion: PORTAL_CONTRACT_VERSION,
-      session: { id: session.id, title: session.title || "新会话", status: sessionState },
-      messages: projection.messages, permissions: (permissions || []).filter((item) => item.sessionID === sessionID), children: children || [], childTree: projection.childTree, plan: todos || [],
+      session: {
+        id: session.id, title: session.title || "新会话", status: sessionState,
+        permissionMode: sessionPolicyStore?.get(worker.portalUserId, sessionID) || "smart",
+        ...(sessionState === null && durableSession?.error ? { error: durableSession.error } : {}),
+      },
+      messages: projection.messages, inbox, permissions: (permissions || []).filter((item) => item.sessionID === sessionID), children: children || [], childTree: projection.childTree, plan: todos || [],
       outline: projection.outline, activity: projection.activity, trajectory: projection.trajectory, stats: projection.stats, context: projection.context, coverage: projection.coverage,
       graph: projection.graph,
+      artifacts: imagePlugin ? imagePlugin.listAgentArtifacts(worker.portalUserId, sessionID) : [],
       // A completed assistant message proves only that generation settled. It
       // does not prove that files changed, tests passed, deployment succeeded,
       // or a user accepted the result.
@@ -605,7 +873,8 @@ export function createAgentBff(options) {
     writeSse(response, "ready", { cursor: projectionStore.latestCursor(identity.user.portalUserId, sessionID), contractVersion: PORTAL_CONTRACT_VERSION });
 
     const upstreamURL = new URL("/event", worker.upstream);
-    upstreamURL.searchParams.set("directory", worker.workspace);
+    const located = await locateSession(worker, sessionID);
+    upstreamURL.searchParams.set("directory", located.directory);
     const upstreamRequest = http.request(upstreamURL, { method: "GET", headers: { authorization, accept: "text/event-stream" } });
     let buffer = "";
     let syncing = Promise.resolve();
@@ -619,9 +888,10 @@ export function createAgentBff(options) {
       upstreamResponse.on("data", (chunk) => {
         buffer += chunk.toString("utf8");
         for (;;) {
-          const boundary = buffer.indexOf("\n\n");
+          const match = /\r?\n\r?\n/.exec(buffer);
+          const boundary = match?.index ?? -1;
           if (boundary < 0) break;
-          const block = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+          const block = buffer.slice(0, boundary); buffer = buffer.slice(boundary + match[0].length);
           const data = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
           if (!data) continue;
           let payload; try { payload = JSON.parse(data); } catch { payload = { raw: data }; }
@@ -630,17 +900,24 @@ export function createAgentBff(options) {
           writeSse(response, "ephemeral", { cursor: projectionStore.latestCursor(identity.user.portalUserId, sessionID), data: payload });
           if (terminal(payload)) syncing = syncing.then(async () => {
             const snapshot = await sessionProjection(worker, sessionID, workload);
+            const failure = await terminalFailure(payload);
+            const latestAssistant = [...snapshot.messages].reverse().find((message) => message.role === "assistant");
+            if (failure) snapshot.session.error = failure;
+            if (failure && latestAssistant) {
+              latestAssistant.error = failure;
+              latestAssistant.completedAt ||= Date.now();
+            }
             if (worker.activityLeaseFile) {
               if (snapshot.session.status) await extendActivityLease(worker, { sessionId: sessionID, reasons: ["portal-prompt"], durationMs: options.activityLeaseMs });
               else await releaseActivityLease(worker, { sessionId: sessionID, reasons: ["portal-prompt"] });
             }
-            await recordRuntimeOutcome(snapshot, workload);
+            await recordRuntimeOutcome(snapshot, workload, identity.user.portalUserId);
             for (const event of recordProjection(identity.user.portalUserId, sessionID, snapshot)) writeSse(response, "durable", event, event.cursor);
           }).catch((error) => writeSse(response, "projection-error", typedError(error).body));
         }
       });
-      upstreamResponse.once("end", () => response.end());
-      upstreamResponse.once("error", () => response.end());
+      upstreamResponse.once("end", () => { void syncing.finally(() => response.end()); });
+      upstreamResponse.once("error", () => { void syncing.finally(() => response.end()); });
     });
     upstreamRequest.once("error", (error) => { writeSse(response, "projection-error", typedError(portalError(error.message, { statusCode: 502, code: "worker_transport", retryable: true })).body); response.end(); });
     request.once("close", () => upstreamRequest.destroy());
@@ -659,6 +936,7 @@ export function createAgentBff(options) {
       sessionId: task.runtime_session_id,
       kind: task.kind,
       modelId: task.model_id,
+      reasoningEffort: task.reasoning_effort || "",
       status: task.status,
       error: task.error,
       errorCode: task.error_code || null,
@@ -687,10 +965,11 @@ export function createAgentBff(options) {
   }
 
   async function requireSystemModel(modelID) {
-    const capability = (await executableModels(options.systemModelConfigPath, "kaoyan-system")).find((model) => model.id === modelID);
+    const capability = (await consumerExecutableModels(options.systemModelConfigPath, "kaoyan-system", { fresh: true }, "kaoyan-platform")).find((model) => model.id === modelID);
     if (!capability?.selectable || !capability.limit?.context) {
       throw Object.assign(new Error(capability?.disabledReason || "Requested model is not in the safe capability catalog"), { statusCode: 409 });
     }
+    return capability;
   }
 
   async function requireWorkerCapacity(workerUpstream, workspace) {
@@ -741,7 +1020,7 @@ export function createAgentBff(options) {
     return withAdmission("system-kaoyan", async () => {
       const existing = systemStore.idempotent(idempotencyKey);
       if (existing) return existing;
-      await requireSystemModel(modelID);
+      const variant = reasoningVariant(await requireSystemModel(modelID), payload.reasoningEffort);
       await requireWorkerCapacity(systemUpstream, options.systemWorkspace);
       let session = systemStore.session(sessionKey);
       if (!session) {
@@ -756,6 +1035,7 @@ export function createAgentBff(options) {
         runtimeSessionID: session.runtime_session_id,
         kind,
         modelID,
+        reasoningEffort: variant,
         prompt,
         promptMessageID: `msg_${randomUUID().replaceAll("-", "")}`,
         status: "submitting",
@@ -768,7 +1048,7 @@ export function createAgentBff(options) {
         if (systemWorkerLease) await extendActivityLease(systemWorkerLease, { sessionId: session.runtime_session_id, reasons: ["system-task"], durationMs: options.activityLeaseMs });
         await openCodeRequest(`/session/${session.runtime_session_id}/prompt_async`, {
           method: "POST",
-          body: { messageID: task.prompt_message_id, model: { providerID: "yeutech", modelID }, tools: {}, parts: [{ type: "text", text: prompt }] },
+          body: { messageID: task.prompt_message_id, model: { providerID: "yeutech", modelID }, ...(variant ? { variant } : {}), tools: {}, parts: [{ type: "text", text: prompt }] },
         });
         return systemStore.updateAttemptStatus(task.id, task.prompt_message_id, "running");
       } catch (error) {
@@ -791,7 +1071,6 @@ export function createAgentBff(options) {
       if (systemWorkerLease) await extendActivityLease(systemWorkerLease, { sessionId: attempt.runtime_session_id, reasons: ["system-task"], durationMs: options.activityLeaseMs });
     } else if (new Set(["submitting", "running"]).has(attempt.status)) {
       const assistant = records?.findLast?.((record) => record?.info?.role === "assistant" && record.info?.parentID === attempt.prompt_message_id && record.info?.time?.completed);
-      const attemptRecorded = records?.some?.((record) => record?.info?.id === attempt.prompt_message_id || record?.info?.parentID === attempt.prompt_message_id);
       const text = assistant?.parts?.filter((part) => part?.type === "text").map((part) => String(part.text || "")).join("").trim();
       const toolResult = assistant?.parts?.some((part) => part?.type === "tool" && part.state?.status === "completed" && part.state?.output !== undefined && part.state?.output !== "");
       if (assistant && (text || toolResult)) current = systemStore.updateAttemptStatus(attempt.id, attempt.prompt_message_id, "completed");
@@ -800,7 +1079,7 @@ export function createAgentBff(options) {
         const reason = "Model completed without assistant text or a valid tool result";
         current = systemStore.updateAttemptStatus(attempt.id, attempt.prompt_message_id, "failed", reason, "system_task_empty_result");
         if (current.prompt_message_id === attempt.prompt_message_id && current.status === "failed") await updateRuntimeState(runtimeStateKey(attempt.model_id, "kaoyan-system"), { status: "quarantined", scope: runtimeScope("kaoyan-system"), reason, failedAt: new Date().toISOString(), retryAfter: Date.now() + (options.modelQuarantineMs ?? 3_600_000) });
-      } else if (!attemptRecorded && Date.now() - Number(attempt.updated_at) >= (options.submissionRecoveryGraceMs ?? 30_000)) {
+      } else if (!assistant && Date.now() - Number(attempt.updated_at) >= (options.submissionRecoveryGraceMs ?? 30_000)) {
         const interruptedSubmission = attempt.status === "submitting";
         const reason = interruptedSubmission
           ? "System task submission was interrupted before OpenCode accepted the prompt"
@@ -817,10 +1096,76 @@ export function createAgentBff(options) {
     const incoming = new URL(request.url ?? "/", "http://127.0.0.1");
     if (request.method === "GET" && incoming.pathname === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: true, workerMode: options.ensureWorker ? "dynamic" : "static-test" }));
+      response.end(JSON.stringify({ ok: true, workerMode: options.ensureWorker ? "dynamic" : "static-test", components: { pluginRuntime: imagePlugin ? "ready" : "disabled", macCapabilityRuntime: macCapabilityPlugin?.ready ? "ready" : "unavailable", projectionStore: projectionStore ? "ready" : "disabled" } }));
       return;
     }
     try {
+      if (incoming.pathname.startsWith("/api/plugins/v1/")) {
+        const businessAuthorized = request.headers.authorization === `Bearer ${options.pluginServiceToken}`;
+        if (request.method === "GET" && incoming.pathname === "/api/plugins/v1/image-generation/models") {
+          if (!imagePlugin) throw portalError("Image plugin runtime is not configured", { statusCode: 503, code: "plugin_runtime_unavailable", retryable: true, scope: "plugin" });
+          if (!businessAuthorized) throw portalError("Plugin service authorization is required", { statusCode: 401, code: "plugin_authorization_required", retryable: false, scope: "identity" });
+          response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+          response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: await imagePlugin.listModels() }));
+          return;
+        }
+        if (request.method === "GET" && incoming.pathname === "/api/plugins/v1/catalog") {
+          if (!businessAuthorized) throw portalError("Plugin service authorization is required", { statusCode: 401, code: "plugin_authorization_required", retryable: false, scope: "identity" });
+          const imageModels = imagePlugin ? await imagePlugin.listModels().catch(() => []) : [];
+          response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+          response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: (pluginManager?.catalog?.() || []).map((plugin) => ({ ...plugin, runtimeStatus: plugin.id === "yeutech.image-generation" ? (imageModels.length ? "ready" : "unavailable") : ["yeutech.document-ocr", "yeutech.media-inspect"].includes(plugin.id) ? (macCapabilityPlugin?.ready ? "ready" : "unavailable") : "ready", ...(plugin.id === "yeutech.image-generation" ? { models: imageModels } : {}) })) }));
+          return;
+        }
+        if (request.method === "POST" && incoming.pathname === "/api/plugins/v1/image-generation/agent-runs") {
+          if (!imagePlugin) throw portalError("Image plugin runtime is not configured", { statusCode: 503, code: "plugin_runtime_unavailable", retryable: true, scope: "plugin" });
+          const portalUserId = pluginWorkerUser(request.headers.authorization);
+          if (!portalUserId) throw portalError("Worker plugin authorization is required", { statusCode: 401, code: "plugin_authorization_required", retryable: false, scope: "identity" });
+          if ((await proxyMaintenanceStatus(options.proxyMaintenanceURL)).updating === true) throw portalError("AI 工作台正在更新，请稍后重试", { statusCode: 503, code: "workbench_updating", retryable: true, scope: "plugin", recoveryAction: "retry" });
+          const payload = JSON.parse((await readBody(request, Math.min(bodyLimit, 64 * 1024))).toString("utf8") || "{}");
+          const controller = new AbortController();
+          const abort = () => controller.abort(new DOMException("Plugin caller disconnected", "AbortError"));
+          request.once("aborted", abort);
+          response.once("close", () => { if (!response.writableEnded) abort(); });
+          const artifact = await imagePlugin.generateAgent({ ...payload, portalUserId, signal: controller.signal });
+          response.writeHead(201, { "content-type": "application/json", "cache-control": "no-store" });
+          response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: artifact }));
+          return;
+        }
+        if (request.method === "POST" && incoming.pathname === "/api/plugins/v1/mac-capabilities/agent-runs") {
+          const portalUserId = pluginWorkerUser(request.headers.authorization);
+          if (!portalUserId) throw portalError("Worker plugin authorization is required", { statusCode: 401, code: "plugin_authorization_required", retryable: false, scope: "identity" });
+          if (!macCapabilityPlugin?.ready) throw portalError("Mac capability runtime is unavailable", { statusCode: 503, code: "mac_runtime_unavailable", retryable: true, scope: "plugin" });
+          const payload = JSON.parse((await readBody(request, Math.min(bodyLimit, 64 * 1024))).toString("utf8") || "{}");
+          const controller = new AbortController();
+          const abort = () => controller.abort(new DOMException("Plugin caller disconnected", "AbortError"));
+          request.once("aborted", abort); response.once("close", () => { if (!response.writableEnded) abort(); });
+          const run = await macCapabilityPlugin.run({ ...payload, portalUserId, signal: controller.signal, controller });
+          response.writeHead(run.status === "completed" ? 201 : 502, { "content-type": "application/json", "cache-control": "no-store" });
+          response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: run })); return;
+        }
+        const macRunMatch = /^\/api\/plugins\/v1\/mac-capabilities\/agent-runs\/(mac_[A-Za-z0-9]+)$/.exec(incoming.pathname);
+        if (macRunMatch && (request.method === "GET" || request.method === "DELETE")) {
+          const portalUserId = pluginWorkerUser(request.headers.authorization);
+          if (!portalUserId) throw portalError("Worker plugin authorization is required", { statusCode: 401, code: "plugin_authorization_required", retryable: false, scope: "identity" });
+          const run = request.method === "DELETE" ? macCapabilityPlugin?.cancel(portalUserId, macRunMatch[1]) : macCapabilityPlugin?.get(portalUserId, macRunMatch[1]);
+          if (!run) throw portalError("Mac capability run was not found", { statusCode: 404, code: "mac_run_not_found", retryable: false, scope: "plugin" });
+          response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: run })); return;
+        }
+        if (request.method === "POST" && incoming.pathname === "/api/plugins/v1/image-generation/business-runs") {
+          if (!businessAuthorized) throw portalError("Business plugin authorization is required", { statusCode: 401, code: "plugin_authorization_required", retryable: false, scope: "identity" });
+          if ((await proxyMaintenanceStatus(options.proxyMaintenanceURL)).updating === true) throw portalError("AI 工作台正在更新，请稍后重试", { statusCode: 503, code: "workbench_updating", retryable: true, scope: "plugin", recoveryAction: "retry" });
+          const payload = JSON.parse((await readBody(request, Math.min(bodyLimit, 64 * 1024))).toString("utf8") || "{}");
+          const controller = new AbortController();
+          const abort = () => controller.abort(new DOMException("Plugin caller disconnected", "AbortError"));
+          request.once("aborted", abort);
+          response.once("close", () => { if (!response.writableEnded) abort(); });
+          const artifact = await imagePlugin.generateBusiness({ ...payload, signal: controller.signal });
+          response.writeHead(201, { "content-type": "application/json", "cache-control": "no-store" });
+          response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: artifact }));
+          return;
+        }
+        throw portalError("Plugin route not found", { statusCode: 404, code: "plugin_route_not_found", retryable: false, scope: "plugin" });
+      }
       if (incoming.pathname.startsWith("/api/system/")) {
         if (!systemStore) {
           respondError(response, portalError("System tasks are not configured", { statusCode: 404, code: "system_tasks_disabled", retryable: false, scope: "system" }));
@@ -838,7 +1183,7 @@ export function createAgentBff(options) {
           return;
         }
         if (request.method === "GET" && incoming.pathname === "/api/system/models") {
-          const catalog = await executableModels(options.systemModelConfigPath, "kaoyan-system");
+          const catalog = await consumerExecutableModels(options.systemModelConfigPath, "kaoyan-system", undefined, "kaoyan-platform");
           const reload = options.systemModelReloadStatePath ? JSON.parse(await readFile(options.systemModelReloadStatePath, "utf8").catch(() => "{\"status\":\"unknown\"}")) : { status: "unknown" };
           response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
           response.end(JSON.stringify({ data: catalog, defaultModel: selectDefaultModel(catalog, options.defaultModel), reload, contractVersion: PORTAL_CONTRACT_VERSION }));
@@ -886,18 +1231,19 @@ export function createAgentBff(options) {
           const modelID = String(payload.modelId || task.model_id);
           const prompt = String(payload.prompt || task.prompt).trim();
           const resumed = await withAdmission("system-kaoyan", async () => {
-            await requireSystemModel(modelID);
+            const variant = reasoningVariant(await requireSystemModel(modelID), payload.reasoningEffort ?? task.reasoning_effort);
             await requireWorkerCapacity(systemUpstream, options.systemWorkspace);
             const promptMessageID = `msg_${randomUUID().replaceAll("-", "")}`;
             const reservation = systemStore.reserveResume(task.id, promptMessageID, modelID, prompt, maxConcurrentPerWorker);
             if (reservation.alreadyActive) return reservation.task;
             if (reservation.capacityReached) throw portalError(`Worker concurrency limit reached (${maxConcurrentPerWorker})`, { statusCode: 429, code: "worker_capacity", retryable: true, scope: "system-worker", recoveryAction: "retry_later" });
             if (reservation.sessionBusy) throw portalError("This system session already has an active task", { statusCode: 409, code: "system_session_busy", retryable: true, scope: "system-task", recoveryAction: "retry_later" });
+            systemStore.setReasoning(task.id, variant);
             try {
               if (systemWorkerLease) await extendActivityLease(systemWorkerLease, { sessionId: task.runtime_session_id, reasons: ["system-task-resume"], durationMs: options.activityLeaseMs });
               await openCodeRequest(`/session/${task.runtime_session_id}/prompt_async`, {
                 method: "POST",
-                body: { messageID: promptMessageID, model: { providerID: "yeutech", modelID }, tools: {}, parts: [{ type: "text", text: prompt }] },
+                body: { messageID: promptMessageID, model: { providerID: "yeutech", modelID }, ...(variant ? { variant } : {}), tools: {}, parts: [{ type: "text", text: prompt }] },
               });
               return systemStore.updateAttemptStatus(task.id, promptMessageID, "running");
             } catch (error) {
@@ -938,19 +1284,46 @@ export function createAgentBff(options) {
       const passiveMessagesRoute = incoming.pathname.match(/^\/api\/workbench\/sessions\/(ses_[A-Za-z0-9]+)\/messages$/);
       if (request.method === "GET" && passiveMessagesRoute) {
         if (!projectionStore) throw portalError("Projection history is unavailable", { statusCode: 503, code: "projection_store_unavailable", retryable: true, scope: "projection" });
-        const page = projectionStore.messages(identity.user.portalUserId, passiveMessagesRoute[1], incoming.searchParams.get("before"), incoming.searchParams.get("limit") || 10);
+        const sessionID = passiveMessagesRoute[1];
+        if (imagePlugin || macCapabilityPlugin) {
+          const dormantWorker = await inspectWorker(identity.user);
+          const passiveSession = dormantWorker ? passiveSessions(dormantWorker).find((item) => item.id === sessionID) : null;
+          if (dormantWorker?.workspace && passiveSession) {
+            const directory = path.resolve(String(passiveSession.directory || dormantWorker.workspace));
+            const projects = await visibleProjects(dormantWorker);
+            const project = projects.find((item) => path.resolve(dormantWorker.workspace, item.workspaceDirectory) === directory);
+            imagePlugin?.bindSession(identity.user.portalUserId, sessionID, project ? { project: project.name } : { session: sessionID }, directory);
+            macCapabilityPlugin?.bindSession(identity.user.portalUserId, sessionID, directory);
+          }
+        }
+        const page = projectionStore.messages(identity.user.portalUserId, sessionID, incoming.searchParams.get("before"), incoming.searchParams.get("limit") || 10);
+        const projection = projectionStore.latestValue(identity.user.portalUserId, sessionID, "projection") || {};
+        const session = projectionStore.latestValue(identity.user.portalUserId, sessionID, "session") || { id: sessionID, status: null };
+        const artifacts = imagePlugin ? imagePlugin.listAgentArtifacts(identity.user.portalUserId, sessionID) : [];
         response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
-        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, ...page }));
+        const inbox = sessionInboxStore?.forSession(identity.user.portalUserId, sessionID).map(inboxMessage) || [];
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, ...projection, session, artifacts, inbox, ...page }));
         return;
       }
       if (incoming.pathname === "/api/workbench/bootstrap" && request.method === "GET") {
         const dormantWorker = await inspectWorker(identity.user);
-        const catalog = await executableModels(dormantWorker?.modelConfigPath);
+        const catalog = await consumerExecutableModels(dormantWorker?.modelConfigPath);
         const projects = dormantWorker?.workspace ? await visibleProjects(dormantWorker) : [];
         const sessions = passiveSessions(dormantWorker);
+        let states = {};
+        let permissions = [];
+        if (dormantWorker?.active && dormantWorker?.upstream) {
+          const [statusResult, permissionResult] = await Promise.allSettled([
+            workerRequest(dormantWorker, "/session/status"),
+            workerRequest(dormantWorker, "/permission"),
+          ]);
+          if (statusResult.status === "fulfilled") states = statusResult.value || {};
+          if (permissionResult.status === "fulfilled") permissions = permissionResult.value || [];
+        }
         const projectedSessions = sessions.map((session) => {
           const directory = path.resolve(String(session.directory || dormantWorker.workspace));
           const project = projects.find((item) => path.resolve(dormantWorker.workspace, item.workspaceDirectory) === directory);
+          imagePlugin?.bindSession(identity.user.portalUserId, session.id, project ? { project: project.name } : { session: session.id }, directory);
           const { directory: _privateDirectory, ...publicSession } = session;
           return { ...publicSession, projectId: project?.id || null, projectDirectory: project?.workspaceDirectory || null };
         });
@@ -958,7 +1331,90 @@ export function createAgentBff(options) {
           ? JSON.parse(await readFile(dormantWorker.modelReloadStatePath, "utf8").catch(() => "{\"status\":\"sleeping\"}"))
           : { status: "sleeping" };
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, sessions: projectedSessions, states: {}, permissions: [], models: catalog, projects, defaultModel: selectDefaultModel(catalog, options.defaultModel), reload, workerActive: Boolean(dormantWorker?.active) }));
+        const drafts = sessionDraftStore?.list(identity.user.portalUserId) ?? [];
+        const sessionPreferences = Object.fromEntries((sessionPolicyStore?.list(identity.user.portalUserId) || []).map((item) => [item.sessionId, item]));
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, sessions: [...drafts, ...projectedSessions], states, permissions, models: catalog, projects, sessionPreferences, defaultModel: selectDefaultModel(catalog, options.defaultModel), reload, workerActive: Boolean(dormantWorker?.active) }));
+        return;
+      }
+      if (incoming.pathname === "/api/workbench/session-index" && request.method === "GET") {
+        const dormantWorker = await inspectWorker(identity.user);
+        const projects = dormantWorker?.workspace ? await visibleProjects(dormantWorker) : [];
+        const sessions = passiveSessions(dormantWorker).map((session) => {
+          const directory = path.resolve(String(session.directory || dormantWorker.workspace));
+          const project = projects.find((item) => path.resolve(dormantWorker.workspace, item.workspaceDirectory) === directory);
+          const { directory: _privateDirectory, ...publicSession } = session;
+          return { ...publicSession, projectId: project?.id || null, projectDirectory: project?.workspaceDirectory || null };
+        });
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: [...(sessionDraftStore?.list(identity.user.portalUserId) ?? []), ...sessions] }));
+        return;
+      }
+      const sessionPreferenceRoute = incoming.pathname.match(/^\/api\/workbench\/session-preferences\/(.+)$/);
+      if (sessionPreferenceRoute && request.method === "PATCH") {
+        if (!sessionPolicyStore) throw portalError("Session preferences are unavailable", { statusCode: 503, code: "session_preferences_unavailable", retryable: true, scope: "session" });
+        const sessionID = decodeURIComponent(sessionPreferenceRoute[1]);
+        if (!/^(?:ses_[A-Za-z0-9]+|ses_local_[a-f0-9]{32}|(?:portal|imported):[0-9a-f-]{36})$/i.test(sessionID)) {
+          throw portalError("Session ID is invalid", { statusCode: 400, code: "session_id_invalid", retryable: false, scope: "session" });
+        }
+        const payload = JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}");
+        const dormantWorker = await inspectWorker(identity.user);
+        const catalog = await consumerExecutableModels(dormantWorker?.modelConfigPath);
+        const capability = catalog.find((item) => item.id === payload.modelId);
+        if (!capability?.selectable) throw portalError(capability?.disabledReason || "Requested model is unavailable", { statusCode: 409, code: "session_model_unavailable", retryable: false, scope: "session" });
+        const effort = reasoningVariant(capability, payload.reasoningEffort);
+        if (sessionID.startsWith("ses_local_")) {
+          const draft = sessionDraftStore?.updateModel(identity.user.portalUserId, sessionID, capability.id);
+          if (!draft) throw portalError("Session draft was not found", { statusCode: 404, code: "session_draft_not_found", retryable: false, scope: "session" });
+        }
+        const modelId = sessionPolicyStore.setModel(identity.user.portalUserId, sessionID, capability.id);
+        sessionPolicyStore.setReasoning(identity.user.portalUserId, sessionID, effort);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { sessionId: sessionID, modelId, reasoningEffort: effort || "" } }));
+        return;
+      }
+      if (incoming.pathname === "/api/workbench/session-drafts" && request.method === "POST") {
+        if (!sessionDraftStore) throw portalError("Session drafts are unavailable", { statusCode: 503, code: "session_drafts_unavailable", retryable: true, scope: "session" });
+        const payload = JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}");
+        const draft = sessionDraftStore.create(identity.user.portalUserId, payload);
+        response.writeHead(201, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: draft }));
+        return;
+      }
+      const draftMutationRoute = incoming.pathname.match(/^\/api\/workbench\/session-drafts\/(ses_local_[a-f0-9]{32})$/);
+      if (draftMutationRoute && new Set(["PATCH", "DELETE"]).has(request.method)) {
+        if (!sessionDraftStore) throw portalError("Session drafts are unavailable", { statusCode: 503, code: "session_drafts_unavailable", retryable: true, scope: "session" });
+        const id = draftMutationRoute[1];
+        const data = request.method === "PATCH"
+          ? sessionDraftStore.rename(identity.user.portalUserId, id, JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}").title)
+          : { id, deleted: sessionDraftStore.remove(identity.user.portalUserId, id) };
+        if (!data || (request.method === "DELETE" && !data.deleted)) throw portalError("Session draft was not found", { statusCode: 404, code: "session_draft_not_found", retryable: false, scope: "session" });
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data }));
+        return;
+      }
+      const materializeDraftRoute = incoming.pathname.match(/^\/api\/workbench\/session-drafts\/(ses_local_[a-f0-9]{32})\/materialize$/);
+      if (materializeDraftRoute && request.method === "POST") {
+        if (!sessionDraftStore) throw portalError("Session drafts are unavailable", { statusCode: 503, code: "session_drafts_unavailable", retryable: true, scope: "session" });
+        const draft = sessionDraftStore.get(identity.user.portalUserId, materializeDraftRoute[1]);
+        if (!draft) throw portalError("Session draft was not found", { statusCode: 404, code: "session_draft_not_found", retryable: false, scope: "session" });
+        const worker = await ensureWorker(identity.user);
+        let directory = worker.workspace;
+        if (draft.projectId) {
+          const project = (await visibleProjects(worker)).find((item) => item.id === draft.projectId && item.registered);
+          if (!project) throw portalError("Registered project was not found", { statusCode: 404, code: "project_not_found", retryable: false, scope: "project" });
+          directory = path.resolve(worker.workspace, project.workspaceDirectory);
+        }
+        const session = await workerRequest(worker, "/session", { method: "POST", body: { title: draft.title }, directory });
+        if (sessionPolicyStore) {
+          const preferredModel = draft.model?.id || sessionPolicyStore.getModel(identity.user.portalUserId, draft.id);
+          if (preferredModel) {
+            sessionPolicyStore.setModel(identity.user.portalUserId, session.id, preferredModel);
+            sessionPolicyStore.setReasoning(identity.user.portalUserId, session.id, sessionPolicyStore.getReasoning(identity.user.portalUserId, draft.id));
+          }
+        }
+        sessionDraftStore.remove(identity.user.portalUserId, draft.id);
+        response.writeHead(201, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { ...session, projectId: draft.projectId || null, draftId: draft.id } }));
         return;
       }
       const workspaceOnlyRequest = incoming.pathname === "/api/models"
@@ -966,15 +1422,23 @@ export function createAgentBff(options) {
       const passiveControlRequest = incoming.pathname === "/api/workbench/profiles"
         || incoming.pathname === "/api/workbench/control"
         || incoming.pathname === "/api/workbench/skills"
+        || incoming.pathname === "/api/workbench/plugins"
+        || /^\/api\/workbench\/plugins\/[A-Za-z0-9._-]+$/.test(incoming.pathname)
         || incoming.pathname === "/api/workbench/context-packs"
         || incoming.pathname === "/api/workbench/replays"
         || /^\/api\/workbench\/replays\/replay_[a-f0-9]{32}$/.test(incoming.pathname)
         || incoming.pathname === "/api/workbench/goals"
         || /^\/api\/workbench\/goals\/goal_[a-f0-9]{32}$/.test(incoming.pathname);
-      const worker = workspaceOnlyRequest || passiveControlRequest ? await inspectWorker(identity.user) : await ensureWorker(identity.user);
+      const passiveSnapshotRequest = request.method === "GET" && /^\/api\/workbench\/sessions\/ses_[A-Za-z0-9]+\/snapshot$/.test(incoming.pathname);
+      const inspectedSnapshotWorker = passiveSnapshotRequest ? await inspectWorker(identity.user) : null;
+      const worker = workspaceOnlyRequest || passiveControlRequest
+        ? await inspectWorker(identity.user)
+        : passiveSnapshotRequest && inspectedSnapshotWorker?.active === false
+          ? inspectedSnapshotWorker
+          : await ensureWorker(identity.user);
       if (!worker?.workspace || !worker?.upstream) throw Object.assign(new Error("Agent worker is unavailable"), { statusCode: 503 });
       if (request.method === "GET" && incoming.pathname === "/api/models") {
-        const catalog = await executableModels(worker.modelConfigPath);
+        const catalog = await consumerExecutableModels(worker.modelConfigPath);
         const defaultModel = selectDefaultModel(catalog, options.defaultModel);
         const reload = worker.modelReloadStatePath
           ? JSON.parse(await readFile(worker.modelReloadStatePath, "utf8").catch(() => "{\"status\":\"unknown\"}"))
@@ -986,12 +1450,13 @@ export function createAgentBff(options) {
       if (incoming.pathname === "/api/workbench/runtime-bootstrap" && request.method === "GET") {
         const files = await workspaceFiles(worker);
         const [sessions, states, permissions, catalog, projects] = await Promise.all([
-          workerRequest(worker, "/session"), workerRequest(worker, "/session/status"), workerRequest(worker, "/permission"), executableModels(worker.modelConfigPath), visibleProjects(worker),
+          workerRequest(worker, "/session"), workerRequest(worker, "/session/status"), workerRequest(worker, "/permission"), consumerExecutableModels(worker.modelConfigPath), visibleProjects(worker),
         ]);
         const reload = worker.modelReloadStatePath ? JSON.parse(await readFile(worker.modelReloadStatePath, "utf8").catch(() => "{\"status\":\"unknown\"}")) : { status: "unknown" };
         const projectedSessions = sessions.map((session) => {
           const directory = path.resolve(String(session.directory || worker.workspace));
           const project = projects.find((item) => path.resolve(worker.workspace, item.workspaceDirectory) === directory);
+          imagePlugin?.bindSession(identity.user.portalUserId, session.id, project ? { project: project.name } : { session: session.id }, directory);
           const { directory: _privateDirectory, ...publicSession } = session;
           return { ...publicSession, projectId: project?.id || null, projectDirectory: project?.workspaceDirectory || null };
         });
@@ -1033,6 +1498,7 @@ export function createAgentBff(options) {
         const preference = request.method === "PATCH"
           ? projectPreferenceStore.rename(identity.user.portalUserId, projectId, JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}").name)
           : projectPreferenceStore.setHidden(identity.user.portalUserId, projectId, true);
+        if (request.method === "DELETE") sessionDraftStore?.removeProject(identity.user.portalUserId, projectId);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { ...project, name: preference.displayName || project.name, registered: !preference.hidden, removed: preference.hidden } }));
         return;
@@ -1048,6 +1514,39 @@ export function createAgentBff(options) {
         return;
       }
       const sessionMutationRoute = incoming.pathname.match(/^\/api\/workbench\/sessions\/(ses_[A-Za-z0-9]+)$/);
+      const sessionPermissionModeRoute = incoming.pathname.match(/^\/api\/workbench\/sessions\/(ses_[A-Za-z0-9]+)\/permission-mode$/);
+      if (sessionPermissionModeRoute && request.method === "PATCH") {
+        if (!sessionPolicyStore) throw portalError("Session preferences are unavailable", { statusCode: 503, code: "session_preferences_unavailable", retryable: true, scope: "session" });
+        const sessionID = sessionPermissionModeRoute[1];
+        const payload = JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}");
+        const permissionMode = PERMISSION_MODES.has(payload.permissionMode) ? payload.permissionMode : null;
+        if (!permissionMode) throw portalError("Permission mode is invalid", { statusCode: 400, code: "permission_mode_invalid", retryable: false, scope: "session" });
+        const located = await locateSession(worker, sessionID);
+        const projects = await visibleProjects(worker);
+        const project = projects.find((item) => path.resolve(worker.workspace, item.workspaceDirectory) === path.resolve(located.directory));
+        const pluginScope = project ? `project:${project.id}` : "workspace";
+        const pluginToolPolicy = pluginManager ? pluginManager.toolPolicy(identity.user.portalUserId, pluginScope) : {};
+        await workerRequest(worker, `/session/${sessionID}`, {
+          method: "PATCH",
+          body: { permission: sessionPermissionRules(permissionMode, pluginToolPolicy) },
+          directory: located.directory,
+        });
+        sessionPolicyStore.set(identity.user.portalUserId, sessionID, permissionMode);
+        let clearedPermissions = 0;
+        if (permissionMode === "full") {
+          const pending = await workerRequest(worker, "/permission", { directory: located.directory });
+          const matching = (pending || []).filter((item) => item?.sessionID === sessionID && /^per_[A-Za-z0-9]+$/.test(String(item?.id || "")));
+          const replies = await Promise.allSettled(matching.map((item) => workerRequest(worker, `/permission/${item.id}/reply`, {
+            method: "POST",
+            body: { reply: "always" },
+            directory: located.directory,
+          })));
+          clearedPermissions = replies.filter((item) => item.status === "fulfilled").length;
+        }
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { sessionId: sessionID, permissionMode, clearedPermissions } }));
+        return;
+      }
       if (sessionMutationRoute && request.method === "PATCH") {
         const payload = JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}");
         const title = String(payload.title || "").trim().slice(0, 160);
@@ -1094,7 +1593,7 @@ export function createAgentBff(options) {
       }
       if (incoming.pathname === "/api/workbench/control" && request.method === "GET") {
         const workload = incoming.searchParams.get("workload") || "general-agent";
-        const catalog = await executableModels(worker.modelConfigPath, workload);
+        const catalog = await consumerExecutableModels(worker.modelConfigPath, workload);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         response.end(JSON.stringify({
           contractVersion: PORTAL_CONTRACT_VERSION,
@@ -1135,7 +1634,7 @@ export function createAgentBff(options) {
         const modelId = String(payload.modelId || "");
         const workload = String(payload.workload || "general-agent");
         if (!/^ses_[A-Za-z0-9]+$/.test(sourceSessionId)) throw portalError("Replay source session is invalid", { statusCode: 400, code: "replay_source_invalid", retryable: false, scope: "replay" });
-        const capability = (await executableModels(worker.modelConfigPath, workload)).find((model) => model.id === modelId);
+        const capability = (await consumerExecutableModels(worker.modelConfigPath, workload, { fresh: true })).find((model) => model.id === modelId);
         if (!capability?.selectable) throw portalError(capability?.disabledReason || "Replay model is unavailable", { statusCode: 409, code: "replay_model_unavailable", retryable: false, scope: "replay" });
         const source = await sessionProjection(worker, sourceSessionId, workload);
         const prompt = [...source.messages].reverse().find((message) => message.role === "user")?.text?.trim();
@@ -1254,6 +1753,24 @@ export function createAgentBff(options) {
         response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, reported, workerActive: Boolean(worker.active), data: values.map((skill) => ({ name: String(skill.name || skill.id || "skill"), description: String(skill.description || ""), source: String(skill.location || skill.path || "OpenCode worker"), available: skill.available !== false })) }));
         return;
       }
+      if (incoming.pathname === "/api/workbench/plugins" && request.method === "GET") {
+        if (!pluginManager) throw portalError("Plugin management is not configured", { statusCode: 503, code: "plugin_manager_unavailable", retryable: true, scope: "plugins" });
+        const projectID = incoming.searchParams.get("project");
+        const scope = projectID ? `project:${projectID}` : "workspace";
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, scope, data: pluginManager.list(identity.user.portalUserId, scope) }));
+        return;
+      }
+      const pluginRoute = incoming.pathname.match(/^\/api\/workbench\/plugins\/([A-Za-z0-9._-]+)$/);
+      if (pluginRoute && request.method === "PATCH") {
+        if (!pluginManager) throw portalError("Plugin management is not configured", { statusCode: 503, code: "plugin_manager_unavailable", retryable: true, scope: "plugins" });
+        const payload = JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}");
+        const scope = payload.projectId ? `project:${payload.projectId}` : "workspace";
+        const result = pluginManager.set(identity.user.portalUserId, scope, pluginRoute[1], payload);
+        response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, scope, data: result }));
+        return;
+      }
       const projectionEvents = incoming.pathname.match(/^\/api\/workbench\/sessions\/(ses_[A-Za-z0-9]+)\/events$/);
       if (request.method === "GET" && projectionEvents) {
         await streamProjectionEvents(request, response, identity, worker, projectionEvents[1], incoming.searchParams.get("workload") || "general-agent");
@@ -1275,7 +1792,9 @@ export function createAgentBff(options) {
       const projectedSession = incoming.pathname.match(/^\/api\/workbench\/sessions\/(ses_[A-Za-z0-9]+)\/(snapshot|outline|activity|trajectory|children|stats|context|graph)$/);
       if (request.method === "GET" && projectedSession) {
         const [, sessionID, view] = projectedSession;
-        const snapshot = await sessionProjection(worker, sessionID, incoming.searchParams.get("workload") || "general-agent");
+        const snapshot = passiveSnapshotRequest && worker.active === false
+          ? passiveSessionProjection(worker, sessionID, incoming.searchParams.get("workload") || "general-agent")
+          : await sessionProjection(worker, sessionID, incoming.searchParams.get("workload") || "general-agent");
         const sessionState = snapshot.session.status;
         if (worker.activityLeaseFile) {
           if (sessionState) await extendActivityLease(worker, { sessionId: sessionID, reasons: ["portal-prompt"], durationMs: options.activityLeaseMs });
@@ -1295,6 +1814,11 @@ export function createAgentBff(options) {
         const isPermissionReply = request.method === "POST" && /^\/api\/agent\/permission\/per_[A-Za-z0-9]+\/reply$/.test(incoming.pathname);
         let body;
         if (isPrompt) {
+          if ((await proxyMaintenanceStatus(options.proxyMaintenanceURL)).updating === true) {
+            throw portalError("AI 工作台正在更新，请稍后在原会话重试", {
+              statusCode: 503, code: "workbench_updating", retryable: true, scope: "worker", recoveryAction: "retry",
+            });
+          }
           body = await readBody(request, bodyLimit);
           let requestedModel;
           let promptPayload;
@@ -1305,20 +1829,51 @@ export function createAgentBff(options) {
             throw Object.assign(new Error("Prompt body must be valid JSON"), { statusCode: 400 });
           }
           const workload = String(promptPayload?.yeutech?.workload || "general-agent");
-          const capability = (await executableModels(worker.modelConfigPath, workload)).find((model) => model.id === requestedModel);
-          if (!capability?.selectable || !capability.limit?.context) {
+          const permissionMode = PERMISSION_MODES.has(promptPayload?.yeutech?.permissionMode) ? promptPayload.yeutech.permissionMode : "smart";
+          const allModels = await executableModels(worker.modelConfigPath, workload, { fresh: true });
+          const capability = allModels.find((model) => model.id === requestedModel);
+          const policy = await consumerModelPolicy();
+          const savedModel = sessionPolicyStore?.getModel(identity.user.portalUserId, incoming.pathname.split("/")[4]);
+          const sessionID = incoming.pathname.split("/")[4];
+          const needsLegacyCheck = policy.enabled && !policy.allowedModelIds.has(requestedModel) && savedModel !== requestedModel;
+          const persistedSession = !needsLegacyCheck
+            ? null
+            : await workerRequest(worker, `/session/${sessionID}`).catch(() => null);
+          const isExistingSelection = savedModel === requestedModel || persistedSession?.model?.modelID === requestedModel;
+          if (!capability?.selectable || !capability.limit?.context || (policy.enabled && !policy.allowedModelIds.has(requestedModel) && !isExistingSelection)) {
             throw Object.assign(new Error(capability?.disabledReason || "Requested model is not in the safe capability catalog"), { statusCode: 409 });
           }
           const projectName = promptPayload?.yeutech?.project;
+          const variant = reasoningVariant(capability, promptPayload?.yeutech?.reasoningEffort ?? promptPayload.variant);
+          if (variant) promptPayload.variant = variant;
+          else delete promptPayload.variant;
           const sourcePaths = Array.isArray(promptPayload?.yeutech?.paths) ? promptPayload.yeutech.paths : [];
           delete promptPayload.yeutech;
-          if (projectName && sourcePaths.length) {
+          let selectedProject = null;
+          if (projectName) {
             const files = await workspaceFiles(worker);
             const projects = await files.projects();
-            const project = projects.find((item) => item.name === projectName && item.registered);
-            if (!project) throw portalError("Registered project was not found", { statusCode: 404, code: "project_not_found", retryable: false, scope: "project" });
-            const sources = await files.sourceReferences(project.name, sourcePaths);
-            const receipt = { ...buildContextPack({ projectId: project.id, revision: Date.now(), sources, schema: "verified-files-v1" }), appliedToExecution: true, persisted: Boolean(projectionStore) };
+            selectedProject = projects.find((item) => item.name === projectName && item.registered);
+            if (!selectedProject) throw portalError("Registered project was not found", { statusCode: 404, code: "project_not_found", retryable: false, scope: "project" });
+          }
+          let pluginToolPolicy = {};
+          if (pluginManager) {
+            const pluginScope = selectedProject ? `project:${selectedProject.id}` : "workspace";
+            pluginToolPolicy = pluginManager.toolPolicy(identity.user.portalUserId, pluginScope);
+          }
+          sessionPolicyStore?.set(identity.user.portalUserId, sessionID, permissionMode);
+          sessionPolicyStore?.setModel(identity.user.portalUserId, sessionID, requestedModel);
+          sessionPolicyStore?.setReasoning(identity.user.portalUserId, sessionID, variant);
+          delete promptPayload.tools;
+          await workerRequest(worker, `/session/${sessionID}`, {
+            method: "PATCH",
+            body: { permission: sessionPermissionRules(permissionMode, pluginToolPolicy) },
+          });
+          imagePlugin?.bindSession(identity.user.portalUserId, sessionID, selectedProject ? { project: selectedProject.name } : { session: sessionID }, worker.workspace);
+          if (selectedProject && sourcePaths.length) {
+            const files = await workspaceFiles(worker);
+            const sources = await files.sourceReferences(selectedProject.name, sourcePaths);
+            const receipt = { ...buildContextPack({ projectId: selectedProject.id, revision: Date.now(), sources, schema: "verified-files-v1" }), appliedToExecution: true, persisted: Boolean(projectionStore) };
             const references = receipt.sources.map((source) => `${source.path}@${source.version}`).join(",");
             const contextText = `[YEUTECH Context Receipt]\nhash=${receipt.hash}\nproject=${receipt.projectId}\nsources=${references}\n[/YEUTECH Context Receipt]\n\n`;
             const textPart = (promptPayload.parts || []).find((part) => part?.type === "text");
@@ -1331,7 +1886,7 @@ export function createAgentBff(options) {
           body = await readBody(request, bodyLimit);
           let reply;
           try { reply = JSON.parse(body.toString("utf8"))?.reply; } catch { throw Object.assign(new Error("Permission response must be valid JSON"), { statusCode: 400 }); }
-          if (!new Set(["once", "reject"]).has(reply)) throw Object.assign(new Error("Only allow_once or reject is supported"), { statusCode: 400 });
+          if (!new Set(["once", "always", "reject"]).has(reply)) throw Object.assign(new Error("Permission response must be once, always, or reject"), { statusCode: 400 });
           body = Buffer.from(JSON.stringify({ reply }));
         }
         if (isPrompt) {
@@ -1340,7 +1895,14 @@ export function createAgentBff(options) {
             await requireWorkerCapacity(worker.upstream, worker.workspace);
             if (worker.activityLeaseFile) {
               const reservation = await reserveActivityLease(worker, { sessionId: sessionID, reasons: ["portal-prompt"], durationMs: options.activityLeaseMs, maxActive: maxConcurrentPerWorker });
-              if (reservation.sessionBusy) throw portalError("This session already has an active prompt", { statusCode: 409, code: "session_busy", retryable: true, scope: "session", recoveryAction: "retry_later" });
+              if (reservation.sessionBusy) {
+                if (!sessionInboxStore) throw portalError("This session already has an active prompt", { statusCode: 409, code: "session_busy", retryable: true, scope: "session", recoveryAction: "retry_later" });
+                const queued = sessionInboxStore.enqueue({ portalUserId: identity.user.portalUserId, username: identity.user.username, sessionId: sessionID, payload: JSON.parse(body.toString("utf8")) });
+                projectionStore?.append(identity.user.portalUserId, sessionID, `inbox:${queued.id}`, "inbox.queued", { id: queued.id, status: "queued", delivery: "steer", position: queued.position, queuedAt: queued.createdAt, message: inboxMessage(queued) });
+                response.writeHead(202, { "content-type": "application/json", "cache-control": "no-store" });
+                response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { queued: true, delivery: "steer", id: queued.id, position: queued.position } }));
+                return;
+              }
               if (reservation.capacityReached) throw portalError(`Worker concurrency limit reached (${maxConcurrentPerWorker})`, { statusCode: 429, code: "worker_capacity", retryable: true, scope: "worker", recoveryAction: "retry_later" });
             }
             await proxy(request, response, {
@@ -1367,7 +1929,8 @@ export function createAgentBff(options) {
     }
   });
   server.once("close", () => {
-    systemStore?.close(); goalStore?.close(); projectionStore?.close(); projectPreferenceStore?.close();
+    if (inboxTimer) clearInterval(inboxTimer);
+    systemStore?.close(); goalStore?.close(); projectionStore?.close(); projectPreferenceStore?.close(); sessionDraftStore?.close(); sessionInboxStore?.close(); sessionPolicyStore?.close(); pluginManager?.close?.(); imagePlugin?.close?.(); macCapabilityPlugin?.close?.();
     if (replayTasks.size) void Promise.allSettled([...replayTasks]).then(() => replayStore?.close());
     else replayStore?.close();
   });
@@ -1409,6 +1972,8 @@ async function main() {
     upstreamPassword: process.env.OPENCODE_SERVER_PASSWORD,
     modelCatalogURL: process.env.YEUTECH_CLI_PROXY_URL,
     modelCatalogToken: process.env.YEUTECH_CLI_PROXY_KEY,
+    consumerModelPolicyFile: process.env.YEUTECH_CONSUMER_MODEL_POLICY_FILE,
+    consumerId: "ai-workbench",
     defaultModel: process.env.YEUTECH_DEFAULT_MODEL,
     modelRouteID: process.env.YEUTECH_MODEL_ROUTE_ID,
     credentialGeneration: process.env.YEUTECH_CREDENTIAL_GENERATION,
@@ -1423,6 +1988,10 @@ async function main() {
     systemActivityLeaseFile: process.env.YEUTECH_SYSTEM_ACTIVITY_LEASE_FILE,
     modelRuntimeStatePath: process.env.YEUTECH_MODEL_RUNTIME_STATE ?? "/runtime/system/model-runtime-state.json",
     controlPlaneDatabasePath: process.env.YEUTECH_CONTROL_PLANE_DATABASE ?? "/runtime/control/control-plane.sqlite",
+    projectsRoot: process.env.YEUTECH_AGENT_PROJECTS_ROOT ?? "/projects",
+    pluginServiceToken: process.env.YEUTECH_PLUGIN_SERVICE_TOKEN,
+    macCapabilitySsh: { host: process.env.YEUTECH_MAC_CAPABILITY_SSH_HOST, identityFile: process.env.YEUTECH_MAC_CAPABILITY_SSH_KEY, knownHostsFile: process.env.YEUTECH_MAC_CAPABILITY_KNOWN_HOSTS, timeoutMs: Number(process.env.YEUTECH_MAC_CAPABILITY_TIMEOUT_MS ?? 1_800_000) },
+    imageDownloadHosts: String(process.env.YEUTECH_IMAGE_DOWNLOAD_HOSTS || "").split(",").map((value) => value.trim()).filter(Boolean),
     maxConcurrentPerWorker: Number(process.env.YEUTECH_MAX_CONCURRENT_PER_WORKER ?? 2),
     migrationUserId: Number(process.env.YEUTECH_MIGRATION_USER_ID ?? 3),
     webRoot: process.env.YEUTECH_AGENT_WEB_ROOT ?? path.resolve(import.meta.dirname, "../web/dist"),

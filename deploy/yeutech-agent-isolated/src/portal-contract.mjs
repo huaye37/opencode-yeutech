@@ -26,12 +26,38 @@ function textOf(record) {
   return (record?.parts || []).filter((part) => part?.type === "text").map((part) => String(part.text || "")).join("");
 }
 
+function reasoningOf(record) {
+  return (record?.parts || []).filter((part) => part?.type === "reasoning").map((part) => String(part.text || "")).join("").trim();
+}
+
+function assistantSegments(record) {
+  if (record?.info?.role !== "assistant") return [];
+  return (record?.parts || []).flatMap((part, index) => {
+    if (!new Set(["text", "reasoning"]).has(part?.type)) return [];
+    const text = String(part.text || "");
+    if (!text.trim()) return [];
+    return [{
+      id: String(part.id || `${part.type}:${index}`),
+      type: part.type,
+      text,
+      at: Number(part?.time?.start || record?.info?.time?.created || 0) || null,
+      completedAt: Number(part?.time?.end || 0) || null,
+    }];
+  });
+}
+
 const ATTACHMENT_MARKER = "\n\n[已附加工作区文件]\n";
 const ATTACHMENT_INSTRUCTION = "\n请仅在当前授权工作区内读取这些相对路径。";
 const ATTACHMENT_ONLY_PROMPT = "请读取并处理已附加的文件。";
+const CONTEXT_RECEIPT_PREFIX = /^\[YEUTECH Context Receipt\]\r?\n[\s\S]*?\r?\n\[\/YEUTECH Context Receipt\]\r?\n\r?\n/;
+
+function visibleUserText(value) {
+  return String(value || "").replace(CONTEXT_RECEIPT_PREFIX, "");
+}
 
 function messageContent(record) {
-  const raw = textOf(record);
+  const rawText = textOf(record);
+  const raw = record?.info?.role === "user" ? visibleUserText(rawText) : rawText;
   if (record?.info?.role !== "user") return { text: raw, attachments: [] };
   const marker = raw.lastIndexOf(ATTACHMENT_MARKER);
   if (marker < 0 || !raw.endsWith(ATTACHMENT_INSTRUCTION)) return { text: raw, attachments: [] };
@@ -53,19 +79,28 @@ function nonNegativeInteger(value) {
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
 }
 
-export function projectMessage(record) {
+export function projectMessage(record, options = {}) {
   const content = messageContent(record);
+  const assistant = record?.info?.role !== "user";
+  const hasTool = (record?.parts || []).some((part) => part?.type === "tool");
+  const emptySettledAssistant = assistant && options.runtimeSettled === true
+    && !content.text.trim() && !hasTool && !record?.info?.error && !record?.info?.time?.completed;
   return {
     id: String(record?.info?.id || ""),
     sessionId: String(record?.info?.sessionID || record?.info?.sessionId || ""),
     role: record?.info?.role === "user" ? "user" : "assistant",
     text: content.text,
+    reasoning: assistant ? reasoningOf(record) : "",
+    segments: assistant ? assistantSegments(record) : [],
     attachments: content.attachments,
     createdAt: Number(record?.info?.time?.created || 0) || null,
     completedAt: Number(record?.info?.time?.completed || 0) || null,
     error: record?.info?.error ? {
       code: String(record.info.error?.data?.code || record.info.error?.name || "runtime_error"),
       message: String(record.info.error?.data?.message || record.info.error?.message || "Agent execution failed"),
+    } : emptySettledAssistant ? {
+      code: "empty_response",
+      message: "模型调用已结束，但没有返回正文或工具结果。请换用当前可用模型后重试。",
     } : null,
   };
 }
@@ -83,6 +118,28 @@ function toolResult(part, messageId, options = {}) {
   };
 }
 
+function toolError(part) {
+  const source = part?.state?.error ?? part?.error;
+  if (!source) return null;
+  if (typeof source === "string") return { code: "tool_error", message: source.slice(0, 1_000) };
+  return {
+    code: String(source?.data?.code || source?.code || source?.name || "tool_error").slice(0, 120),
+    message: String(source?.data?.message || source?.message || "Tool execution failed").slice(0, 1_000),
+  };
+}
+
+function toolInput(part, options = {}) {
+  const value = part?.state?.input ?? part?.input;
+  if (value === undefined) return { input: null, inputPreview: "", inputTruncated: false };
+  const serialized = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const limit = options.inlineToolInputLimit ?? 4_000;
+  return {
+    input: serialized.length <= limit && value && typeof value === "object" ? value : null,
+    inputPreview: serialized.slice(0, limit),
+    inputTruncated: serialized.length > limit,
+  };
+}
+
 export function projectActivity(records, children = [], options = {}) {
   const events = [];
   for (const record of records || []) {
@@ -90,14 +147,18 @@ export function projectActivity(records, children = [], options = {}) {
     events.push({ id: `message:${message.id}`, type: "message", at: message.createdAt, message });
     for (const [index, part] of (record?.parts || []).entries()) {
       if (part?.type !== "tool") continue;
+      const projectedInput = toolInput(part, options);
       events.push({
         id: `tool:${message.id}:${part.id || index}`,
         type: "tool",
         at: Number(part?.time?.start || message.createdAt || 0) || null,
         tool: String(part.tool || part.name || "tool"),
+        title: String(part?.state?.title || ""),
         status: String(part?.state?.status || "unknown"),
         durationMs: part?.time?.end && part?.time?.start ? Number(part.time.end) - Number(part.time.start) : null,
+        ...projectedInput,
         result: toolResult(part, message.id, { ...options, sessionId: message.sessionId, partIndex: index }),
+        error: toolError(part),
       });
     }
   }
@@ -162,7 +223,7 @@ export function projectOutline(records, options = {}) {
   return (records || []).filter((record) => record?.info?.role === "user").map((record, index) => ({
     id: String(record.info.id || `turn-${priorTurnCount + index + 1}`),
     turn: priorTurnCount + index + 1,
-    title: textOf(record).trim().replace(/\s+/g, " ").slice(0, 120) || `第 ${priorTurnCount + index + 1} 轮`,
+    title: messageContent(record).text.trim().replace(/\s+/g, " ").slice(0, 120) || `第 ${priorTurnCount + index + 1} 轮`,
     createdAt: Number(record?.info?.time?.created || 0) || null,
   }));
 }
@@ -246,7 +307,7 @@ export function projectSessionPages(session, pages, options = {}) {
   const todos = options.todos || [];
   const priorTurnCount = nonNegativeInteger(options.priorTurnCount);
   return {
-    messages: records.map(projectMessage),
+    messages: records.map((record) => projectMessage(record, { runtimeSettled: options.sessionState === null })),
     outline: projectOutline(records, { priorTurnCount }),
     activity: projectActivity(records, children, options),
     trajectory: projectTrajectory(records, children, options),

@@ -19,6 +19,8 @@ test("persists durable cursors, suppresses only adjacent duplicates, and replays
 
   const reopened = createProjectionEventStore(database);
   assert.deepEqual(reopened.replay(3, "ses_one", busy.cursor).map((item) => item.data.status), [null, "busy"]);
+  assert.deepEqual(reopened.latestValue(3, "ses_one", "session"), { status: "busy" });
+  assert.equal(reopened.latestValue(3, "ses_one", "missing"), null);
   assert.equal(reopened.replay(4, "ses_one", 0).length, 0);
   assert.equal(reopened.latestCursor(3, "ses_one"), busyAgain.cursor);
   reopened.close();
@@ -58,5 +60,16 @@ test("serves the latest durable message values in ten-item reverse pages", async
     assert.deepEqual(older.records.map((item) => item.id), Array.from({ length: 10 }, (_, index) => `msg_${index + 3}`));
     assert.equal(older.cursor, "3");
     assert.deepEqual(store.messages(4, "ses_messages").records, []);
+  } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("omits tool-only assistant records from passive chat history", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-projection-tool-only-"));
+  const store = createProjectionEventStore(path.join(directory, "events.sqlite"));
+  try {
+    store.append(3, "ses_tools", "message:user", "message.upsert", { id: "user", role: "user", text: "generate", createdAt: 1 });
+    store.append(3, "ses_tools", "message:tool", "message.upsert", { id: "tool", role: "assistant", text: "", createdAt: 2 });
+    store.append(3, "ses_tools", "message:answer", "message.upsert", { id: "answer", role: "assistant", text: "done", createdAt: 3 });
+    assert.deepEqual(store.messages(3, "ses_tools").records.map((item) => item.id), ["user", "answer"]);
   } finally { store.close(); await rm(directory, { recursive: true, force: true }); }
 });

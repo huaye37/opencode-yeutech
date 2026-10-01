@@ -53,13 +53,23 @@ export function buildOpenCodeConfig(models, options = {}) {
         models: Object.fromEntries(
           safeModels.map((model) => [model.id, {
             name: model.name,
-            limit: model.limit,
+            // OpenCode 1.18.33 compacts at limit.input minus its reserved
+            // output buffer. Set that effective threshold to 80% of context.
+            limit: {
+              ...model.limit,
+              input: Math.min(model.limit.input, Math.floor(model.limit.context * 0.8) + Math.min(20_000, model.limit.output)),
+            },
             modalities: model.modalities,
+            ...(model.reasoningEfforts?.length ? {
+              reasoning: true,
+              variants: Object.fromEntries(model.reasoningEfforts.map(effort => [effort, { reasoningEffort: effort }])),
+            } : {}),
           }]),
         ),
       },
     },
     model: `yeutech/${defaultModel}`,
+    instructions: [options.instructionsPath ?? "/app/config/agent-workbench.md"],
     permission,
   };
 }

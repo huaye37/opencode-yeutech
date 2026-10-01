@@ -32,6 +32,13 @@ export function createProjectionEventStore(databasePath) {
     );
     CREATE INDEX IF NOT EXISTS projection_events_replay_idx
       ON projection_events(portal_user_id, session_id, sequence);
+    CREATE TABLE IF NOT EXISTS projection_claims (
+      portal_user_id INTEGER NOT NULL,
+      session_id TEXT NOT NULL,
+      claim_key TEXT NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      PRIMARY KEY (portal_user_id, session_id, claim_key)
+    );
   `);
   const insert = database.prepare(`INSERT INTO projection_events
     (portal_user_id, session_id, event_key, fingerprint, type, payload, recorded_at)
@@ -40,6 +47,9 @@ export function createProjectionEventStore(databasePath) {
     WHERE portal_user_id = ? AND session_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?`);
   const latest = database.prepare("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM projection_events WHERE portal_user_id = ? AND session_id = ?");
   const latestForKey = database.prepare("SELECT fingerprint, sequence FROM projection_events WHERE portal_user_id = ? AND session_id = ? AND event_key = ? ORDER BY sequence DESC LIMIT 1");
+  const latestPayloadForKey = database.prepare("SELECT payload FROM projection_events WHERE portal_user_id = ? AND session_id = ? AND event_key = ? ORDER BY sequence DESC LIMIT 1");
+  const claim = database.prepare("INSERT OR IGNORE INTO projection_claims (portal_user_id, session_id, claim_key, claimed_at) VALUES (?, ?, ?, ?)");
+  const releaseClaim = database.prepare("DELETE FROM projection_claims WHERE portal_user_id = ? AND session_id = ? AND claim_key = ?");
 
   return {
     append(portalUserId, sessionId, eventKey, type, payload) {
@@ -71,13 +81,29 @@ export function createProjectionEventStore(databasePath) {
       for (const event of this.replayAll(portalUserId, sessionId)) {
         if (event.type === "message.upsert" && event.data?.id) latestMessages.set(String(event.data.id), event.data);
       }
-      const records = [...latestMessages.values()].sort((left, right) =>
+      // OpenCode emits a completed assistant record containing only tool parts,
+      // followed by a second assistant record with the visible answer. Keep the
+      // tool record in the trajectory, but never turn it into an empty chat
+      // bubble when serving dormant-session history.
+      const records = [...latestMessages.values()].filter((message) =>
+        message?.role !== "assistant" || String(message?.text || "").trim() || message?.error
+      ).sort((left, right) =>
         Number(left.createdAt || 0) - Number(right.createdAt || 0) || String(left.id).localeCompare(String(right.id)));
       const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
       const requestedEnd = before === null || before === undefined || before === "" ? records.length : Number(before);
       const end = Number.isSafeInteger(requestedEnd) ? Math.min(records.length, Math.max(0, requestedEnd)) : records.length;
       const start = Math.max(0, end - pageSize);
       return { records: records.slice(start, end), cursor: start > 0 ? String(start) : null };
+    },
+    latestValue(portalUserId, sessionId, eventKey) {
+      const row = latestPayloadForKey.get(portalUserId, sessionId, eventKey);
+      return row ? JSON.parse(row.payload) : null;
+    },
+    claim(portalUserId, sessionId, claimKey) {
+      return claim.run(portalUserId, sessionId, claimKey, Date.now()).changes === 1;
+    },
+    releaseClaim(portalUserId, sessionId, claimKey) {
+      releaseClaim.run(portalUserId, sessionId, claimKey);
     },
     latestCursor: (portalUserId, sessionId) => Number(latest.get(portalUserId, sessionId).sequence),
     close: () => database.close(),

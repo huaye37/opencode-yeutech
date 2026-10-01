@@ -84,6 +84,8 @@ export const agentApi = {
         workload: context.workload || "general-agent",
         project: context.project || null,
         paths: attachments.map((item) => item.path).filter(Boolean),
+        permissionMode: context.permissionMode || "smart",
+        reasoningEffort: context.reasoningEffort || "",
       },
       tools: {},
       parts: [{
@@ -151,14 +153,23 @@ export const workbenchApi = {
   bootstrap: () => workbenchRequest("/bootstrap"),
   profiles: () => workbenchRequest("/profiles"),
   skills: () => workbenchRequest("/skills"),
+  plugins: (projectID) => workbenchRequest(`/plugins${projectID ? `?project=${encodeURIComponent(projectID)}` : ""}`),
+  updatePlugin: (pluginID, payload) => workbenchRequest(`/plugins/${encodeURIComponent(pluginID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }),
   control: (workload = "general-agent") => workbenchRequest(`/control?workload=${encodeURIComponent(workload)}`),
   projects: () => workbenchRequest("/projects"),
+  sessionIndex: () => workbenchRequest("/session-index"),
+  createSessionDraft: (payload) => workbenchRequest("/session-drafts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }),
+  renameSessionDraft: (sessionID, title) => workbenchRequest(`/session-drafts/${encodeURIComponent(sessionID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }) }),
+  deleteSessionDraft: (sessionID) => workbenchRequest(`/session-drafts/${encodeURIComponent(sessionID)}`, { method: "DELETE" }),
+  materializeSessionDraft: (sessionID) => workbenchRequest(`/session-drafts/${encodeURIComponent(sessionID)}/materialize`, { method: "POST" }),
   createProject: (name) => workbenchRequest("/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }),
   registerProject: (name) => workbenchRequest("/projects/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }),
   renameProject: (projectID, name) => workbenchRequest(`/projects/${encodeURIComponent(projectID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }),
   removeProject: (projectID) => workbenchRequest(`/projects/${encodeURIComponent(projectID)}`, { method: "DELETE" }),
   createProjectSession: (project, title = "新会话") => workbenchRequest("/project-sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project, title }) }),
   renameSession: (sessionID, title) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }) }),
+  updateSessionPreference: (sessionID, modelId, reasoningEffort = "") => workbenchRequest(`/session-preferences/${encodeURIComponent(sessionID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId, reasoningEffort }) }),
+  updateSessionPermission: (sessionID, permissionMode) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}/permission-mode`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ permissionMode }) }),
   deleteSession: (sessionID) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}`, { method: "DELETE" }),
   forkSession: (sessionID, messageId) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}/fork`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(messageId ? { messageId } : {}) }),
   diff: (sessionID, messageId) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}/diff${messageId ? `?messageId=${encodeURIComponent(messageId)}` : ""}`),
@@ -169,6 +180,8 @@ export const workbenchApi = {
   compareReplay: (baseline, candidate) => workbenchRequest("/replays", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ baseline, candidate }) }),
   executeReplay: (sessionId, modelId, workload = "general-agent") => workbenchRequest("/replays/execute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionId, modelId, workload }) }),
   replay: (replayID) => workbenchRequest(`/replays/${replayID}`),
+  // Keep the first render fast and deterministic. Older messages are fetched
+  // only when the user scrolls upward with the cursor returned by this page.
   messages: (sessionID, before) => workbenchRequest(`/sessions/${sessionID}/messages?${new URLSearchParams({ limit: "10", ...(before ? { before } : {}) })}`),
   snapshot: (sessionID, workload = "general-agent") => workbenchRequest(`/sessions/${sessionID}/snapshot?workload=${encodeURIComponent(workload)}`),
   outline: (sessionID) => workbenchRequest(`/sessions/${sessionID}/outline`),
@@ -211,6 +224,8 @@ export const migrationApi = {
   projects: () => migrationRequest("/projects"),
   conversations: () => migrationRequest("/conversations"),
   messages: async (conversationID, before) => {
+    // Match live sessions: render only the newest ten records first and use
+    // the server cursor to page toward older history on demand.
     const query = new URLSearchParams({ limit: "10" });
     if (before) query.set("before", before);
     const response = await fetchWithTimeout(`${migrationBase}/conversations/${encodeURIComponent(conversationID)}/messages?${query}`);
