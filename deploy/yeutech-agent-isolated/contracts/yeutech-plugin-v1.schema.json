@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent.yeutech.cn/contracts/yeutech-plugin-v1.schema.json",
+  "title": "YEUTECH Plugin Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "generation", "plugins"],
+  "properties": {
+    "contractVersion": { "const": "yeutech-plugin-v1" },
+    "generation": { "type": "integer", "minimum": 0 },
+    "plugins": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/plugin" }
+    }
+  },
+  "$defs": {
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "description", "kind", "source", "scope", "activation", "permissions", "capabilities", "requires", "consumers"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$", "maxLength": 120 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "kind": { "enum": ["tool", "skill", "context", "projection", "provider", "workflow", "ui"] },
+        "source": { "enum": ["builtin", "package", "platform-service"] },
+        "scope": { "enum": ["host", "location", "session"] },
+        "activation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["defaultEnabled", "trigger"],
+          "properties": {
+            "defaultEnabled": { "type": "boolean" },
+            "trigger": { "enum": ["host-start", "location-open", "session-open", "first-use"] }
+          }
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["catalog.read", "session.read", "session.write", "project.read", "project.write", "artifact.read", "artifact.write", "network.egress", "model.invoke", "secret.use", "user.interaction"] }
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?::[a-z0-9][a-z0-9._-]*)+$", "maxLength": 160 }
+        },
+        "requires": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$", "maxLength": 120 }
+        },
+        "consumers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["agent-workbench", "novel-workbench", "deepseek-harness"] }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "protocol"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+            "protocol": { "enum": ["yeutech-plugin-http-v1"] }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "platform-service" } }, "required": ["source"] },
+          "then": { "required": ["service"] },
+          "else": { "not": { "required": ["service"] } }
+        }
+      ]
+    }
+  }
+}

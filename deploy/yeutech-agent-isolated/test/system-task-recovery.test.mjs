@@ -102,6 +102,60 @@ test("recovers an interrupted submitting task after BFF restart and releases cap
   }
 });
 
+test("marks a running task recoverable when only its prompt survived a worker restart", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "system-task-prompt-only-recovery-"));
+  const databasePath = path.join(root, "tasks.sqlite");
+  const modelConfigPath = path.join(root, "opencode.json");
+  await writeFile(modelConfigPath, JSON.stringify({ provider: { yeutech: { models: { ready: {} } } } }));
+  const store = createSystemTaskStore(databasePath);
+  store.saveSession("prompt-only", "ses_prompt_only");
+  const task = store.reserve({
+    id: "task_33333333333333333333333333333333",
+    idempotencyKey: "prompt-only",
+    sessionKey: "prompt-only",
+    runtimeSessionID: "ses_prompt_only",
+    kind: "explanation",
+    modelID: "ready",
+    prompt: "survived prompt",
+    promptMessageID: "msg_prompt_only",
+    status: "submitting",
+  }, 1).task;
+  store.updateAttemptStatus(task.id, "msg_prompt_only", "running");
+  store.close();
+  const worker = http.createServer((request, response) => {
+    const incoming = new URL(request.url, "http://127.0.0.1");
+    if (incoming.pathname === "/session/status") return response.writeHead(200, { "content-type": "application/json" }).end("{}");
+    if (incoming.pathname.endsWith("/message")) return response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify([
+      { info: { id: "msg_prompt_only", role: "user" }, parts: [{ type: "text", text: "survived prompt" }] },
+    ]));
+    response.writeHead(404).end();
+  });
+  const workerURL = await listen(worker);
+  const bff = createAgentBff({
+    identitySecret: SECRET,
+    users: [],
+    upstreamURL: workerURL,
+    upstreamUsername: "agent",
+    upstreamPassword: PASSWORD,
+    modelConfigPath,
+    systemToken: TOKEN,
+    systemWorkspace: "/projects/system",
+    systemDatabasePath: databasePath,
+    submissionRecoveryGraceMs: 0,
+  });
+  const baseURL = await listen(bff);
+  try {
+    const recovered = await fetch(`${baseURL}/api/system/tasks/${task.id}`, { headers: { authorization: `Bearer ${TOKEN}` } }).then((response) => response.json());
+    assert.equal(recovered.status, "failed");
+    assert.equal(recovered.errorCode, "system_task_runtime_lost");
+    assert.match(recovered.error, /runtime state was lost/);
+  } finally {
+    await close(bff);
+    await close(worker);
+    await rm(root, { recursive: true });
+  }
+});
+
 test("an in-flight result read cannot complete an older attempt after resume", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "system-task-result-race-"));
   const databasePath = path.join(root, "tasks.sqlite");

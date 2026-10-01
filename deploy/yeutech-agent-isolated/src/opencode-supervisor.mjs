@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
@@ -12,6 +13,7 @@ import { activityLeasePath, readActivityLease, releaseActivityLease } from "./ac
 import { indexPortalProjects, rebindOpenCodeWorkspace, resolvePortalWorkspace } from "./workspace-identity.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const pluginWorkerToken = (secret, portalUserId) => `v1.${portalUserId}.${createHmac("sha256", secret).update(`portal:${portalUserId}`).digest("base64url")}`;
 async function bounded(promise, timeoutMs, fallback = null) {
   let timer;
   try {
@@ -161,10 +163,18 @@ export function createOpenCodeSupervisor(options) {
     }
     const promise = (async () => {
       if (worker.kind === "system") await mkdir(worker.workspace, { recursive: true });
-      for (const directory of [path.join(worker.root, "config"), path.join(worker.root, "logs"), ...["config", "data", "cache", "state"].map((name) => path.join(worker.root, "xdg", name))]) await mkdir(directory, { recursive: true });
+      for (const directory of [path.join(worker.root, "config"), path.join(worker.root, "config", "tools"), path.join(worker.root, "logs"), ...["config", "data", "cache", "state"].map((name) => path.join(worker.root, "xdg", name))]) await mkdir(directory, { recursive: true });
+      if (worker.kind === "portal") {
+        const sources = options.portalToolSources ?? (options.imageToolSource ? { "generate_image.ts": options.imageToolSource } : {});
+        for (const [filename, source] of Object.entries(sources)) if (source) await copyFile(source, path.join(worker.root, "config", "tools", filename));
+      } else {
+        for (const filename of ["generate_image.ts", "document_ocr.ts", "media_inspect.ts"]) await unlink(path.join(worker.root, "config", "tools", filename)).catch((error) => { if (error?.code !== "ENOENT") throw error; });
+      }
       if (!desired) desired = await desiredConfig();
       if (!(await readFile(worker.configFile, "utf8").catch(() => ""))) await writeJsonAtomic(worker.configFile, workerConfig(worker, desired));
-      const spawnOptions = { cwd: worker.workspace, env: { ...process.env, OPENCODE_CONFIG: worker.configFile, OPENCODE_CONFIG_DIR: path.dirname(worker.configFile), XDG_CONFIG_HOME: path.join(worker.root, "xdg", "config"), XDG_DATA_HOME: path.join(worker.root, "xdg", "data"), XDG_CACHE_HOME: path.join(worker.root, "xdg", "cache"), XDG_STATE_HOME: path.join(worker.root, "xdg", "state") } };
+      const environment = { ...process.env };
+      delete environment.YEUTECH_PLUGIN_SERVICE_TOKEN;
+      const spawnOptions = { cwd: worker.workspace, env: { ...environment, OPENCODE_CONFIG: worker.configFile, OPENCODE_CONFIG_DIR: path.dirname(worker.configFile), XDG_CONFIG_HOME: path.join(worker.root, "xdg", "config"), XDG_DATA_HOME: path.join(worker.root, "xdg", "data"), XDG_CACHE_HOME: path.join(worker.root, "xdg", "cache"), XDG_STATE_HOME: path.join(worker.root, "xdg", "state"), ...(worker.kind === "portal" && options.pluginServiceToken ? { YEUTECH_PLUGIN_SERVICE_TOKEN: pluginWorkerToken(options.pluginServiceToken, worker.portalUserId) } : {}) } };
       const child = options.spawnProcess
         ? options.spawnProcess(options.command, ["serve", "--hostname", "127.0.0.1", "--port", String(worker.port)], { ...spawnOptions, stdio: "inherit" })
         : (() => {
@@ -284,7 +294,7 @@ export function createOpenCodeSupervisor(options) {
   }
   async function preparePortalWorkerUnsafe(portalUserId, username, touchAccess) {
     if (!Number.isSafeInteger(portalUserId) || portalUserId <= 0) throw new Error("Portal user ID is invalid");
-    if (!/^[a-zA-Z0-9._-]{1,80}$/.test(username)) throw new Error("Portal username is invalid");
+    if (!/^[\p{L}\p{N}][\p{L}\p{N}._-]{1,23}$/u.test(username)) throw new Error("Portal username is invalid");
     let entry = await registry.ensure(portalUserId, username, { touchAccess });
     const previousWorkspace = entry.previousWorkspace ?? entry.currentPath ?? entry.workspace;
     const discoveredWorkspace = entry.discoveredWorkspace ?? entry.currentPath ?? entry.workspace;
@@ -341,7 +351,7 @@ export function createOpenCodeSupervisor(options) {
   }
   async function describePortalWorker(portalUserId, username) {
     if (!Number.isSafeInteger(portalUserId) || portalUserId <= 0) throw new Error("Portal user ID is invalid");
-    if (!/^[a-zA-Z0-9._-]{1,80}$/.test(username)) throw new Error("Portal username is invalid");
+    if (!/^[\p{L}\p{N}][\p{L}\p{N}._-]{1,23}$/u.test(username)) throw new Error("Portal username is invalid");
     const entry = (await registry.list()).find((item) => item.portalUserId === portalUserId);
     if (!entry || entry.username !== username) return null;
     const worker = fromEntry(entry);
@@ -444,7 +454,7 @@ export function createSupervisorControlServer(supervisor, token, options = {}) {
 async function main() {
   const runtimeRoot = process.env.YEUTECH_AGENT_RUNTIME_ROOT || "/runtime";
   const system = systemWorker({ runtimeRoot, systemWorkspace: process.env.YEUTECH_SYSTEM_WORKSPACE, systemPort: Number(process.env.YEUTECH_SYSTEM_WORKER_PORT || 18133) });
-  const supervisor = createOpenCodeSupervisor({ command: process.env.OPENCODE_BIN ?? "opencode", username: process.env.OPENCODE_SERVER_USERNAME, password: process.env.OPENCODE_SERVER_PASSWORD, modelCatalogURL: process.env.YEUTECH_CLI_PROXY_URL, modelCatalogToken: process.env.YEUTECH_CLI_PROXY_KEY, defaultModel: process.env.YEUTECH_DEFAULT_MODEL, intervalMs: Number(process.env.YEUTECH_MODEL_RELOAD_INTERVAL_MS ?? 15_000), idleEvictionMs: Number(process.env.YEUTECH_WORKER_IDLE_EVICTION_MS ?? 1_800_000), identityRescanMs: Number(process.env.YEUTECH_WORKSPACE_IDENTITY_RESCAN_MS ?? 60_000), refreshConcurrency: Number(process.env.YEUTECH_MODEL_REFRESH_CONCURRENCY ?? 1), runtimeRoot, projectsRoot: process.env.YEUTECH_AGENT_PROJECTS_ROOT || "/projects", registryFile: process.env.YEUTECH_WORKER_REGISTRY_FILE || path.join(runtimeRoot, "workers", "registry.json"), legacyWorkspaces: JSON.parse(process.env.YEUTECH_LEGACY_WORKSPACES_JSON || "{}"), portStart: Number(process.env.YEUTECH_WORKER_PORT_START ?? 18150), portEnd: Number(process.env.YEUTECH_WORKER_PORT_END ?? 18249), systemWorker: system });
+  const supervisor = createOpenCodeSupervisor({ command: process.env.OPENCODE_BIN ?? "opencode", username: process.env.OPENCODE_SERVER_USERNAME, password: process.env.OPENCODE_SERVER_PASSWORD, modelCatalogURL: process.env.YEUTECH_CLI_PROXY_URL, modelCatalogToken: process.env.YEUTECH_CLI_PROXY_KEY, defaultModel: process.env.YEUTECH_DEFAULT_MODEL, intervalMs: Number(process.env.YEUTECH_MODEL_RELOAD_INTERVAL_MS ?? 15_000), idleEvictionMs: Number(process.env.YEUTECH_WORKER_IDLE_EVICTION_MS ?? 1_800_000), identityRescanMs: Number(process.env.YEUTECH_WORKSPACE_IDENTITY_RESCAN_MS ?? 60_000), refreshConcurrency: Number(process.env.YEUTECH_MODEL_REFRESH_CONCURRENCY ?? 1), runtimeRoot, projectsRoot: process.env.YEUTECH_AGENT_PROJECTS_ROOT || "/projects", registryFile: process.env.YEUTECH_WORKER_REGISTRY_FILE || path.join(runtimeRoot, "workers", "registry.json"), legacyWorkspaces: JSON.parse(process.env.YEUTECH_LEGACY_WORKSPACES_JSON || "{}"), portStart: Number(process.env.YEUTECH_WORKER_PORT_START ?? 18150), portEnd: Number(process.env.YEUTECH_WORKER_PORT_END ?? 18249), systemWorker: system, portalToolSources: { "generate_image.ts": process.env.YEUTECH_IMAGE_TOOL_SOURCE || "/app/src/opencode-tools/generate_image.ts", "document_ocr.ts": process.env.YEUTECH_DOCUMENT_OCR_TOOL_SOURCE || "/app/src/opencode-tools/document_ocr.ts", "media_inspect.ts": process.env.YEUTECH_MEDIA_INSPECT_TOOL_SOURCE || "/app/src/opencode-tools/media_inspect.ts" }, pluginServiceToken: process.env.YEUTECH_PLUGIN_SERVICE_TOKEN });
   const control = createSupervisorControlServer(supervisor, process.env.YEUTECH_SUPERVISOR_TOKEN);
   await new Promise((resolve, reject) => { control.once("error", reject); control.listen(Number(process.env.YEUTECH_SUPERVISOR_PORT ?? 18141), "127.0.0.1", resolve); });
   const stop = () => { control.close(); void supervisor.stop(); };

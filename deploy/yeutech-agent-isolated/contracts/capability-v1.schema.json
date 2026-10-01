@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://yeutech.cn/schemas/agent-capability-v1.json",
   "title": "YEUTECH Model Capability Catalog v1",
-  "description": "Discovery entries may be incomplete, but an entry marked selectable must have bounded input/output budgets and explicit modalities. Consumers reserve max_output_tokens from context_length and clamp a larger standalone max_input_tokens to the remaining simultaneous input budget.",
+  "description": "Discovery entries may be incomplete, but an entry marked selectable must have bounded input/output budgets and explicit modalities. supported_workloads declares intended execution surfaces; consumers without that field retain the capability-v1 legacy modality rule. Consumers reserve max_output_tokens from context_length and clamp a larger standalone max_input_tokens to the remaining simultaneous input budget.",
   "type": "object",
   "required": ["data"],
   "properties": {
@@ -26,6 +26,14 @@
     "modalities": {
       "type": "array",
       "items": { "$ref": "#/$defs/modality" },
+      "uniqueItems": true
+    },
+    "workload": {
+      "enum": ["conversation", "agent", "review", "image_generation"]
+    },
+    "workloads": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workload" },
       "uniqueItems": true
     },
     "modelCapability": {
@@ -54,6 +62,7 @@
         },
         "supported_input_modalities": { "$ref": "#/$defs/modalities" },
         "supported_output_modalities": { "$ref": "#/$defs/modalities" },
+        "supported_workloads": { "$ref": "#/$defs/workloads" },
         "thinking": {
           "type": "object",
           "properties": {
@@ -72,6 +81,9 @@
         "supports_web_search": { "type": "boolean" },
         "available": { "type": "boolean" },
         "selectable": { "type": "boolean" },
+        "unavailable_reason": {
+          "enum": ["auth_unavailable", "model_not_found", "credits_required", "cooldown"]
+        },
         "capability_status": { "enum": ["incomplete", "complete", "ready"] }
       },
       "additionalProperties": false,

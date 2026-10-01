@@ -1,0 +1,686 @@
+/*
+ * YEUTECH Material Contract 2.1.0
+ *
+ * Canonical source: yeutech-home-platform/frontend/design/yeutech-material-contract.css
+ * Vendored copies are produced by yeutech-home-platform/scripts/sync-material-contract.mjs
+ * and are verified byte-for-byte by every site's contract test. Edit only the canonical file.
+ *
+ * The portal is the only appearance authority. Sites read
+ * /api/portal/appearance?site=<site> and yeutech-material-contract.mjs writes the raw
+ * inputs (--yt-*) onto :root. Everything visual below is derived from those inputs.
+ *
+ * Seven layers, one job each:
+ *   page      background colour + wallpaper, scaled only by backgroundOpacity
+ *   surface   primary content regions and large cards        (blurs the page once)
+ *   material  rows, info blocks and card interiors            (never blurs)
+ *   chrome    top bars, sidebars, navigation and toolbars     (blurs the page once)
+ *   control   buttons, fields, selects and segmented controls (never blurs)
+ *   overlay   dialogs, popovers, sheets and file drawers      (blurs once, strongest)
+ *   dim       the scrim behind an overlay, nothing else
+ *
+ * Layers differ in tone as well as alpha, so equal opacity settings still read as a
+ * hierarchy: material is recessed in light mode and raised in dark mode; controls use
+ * a neutral fill instead of another white veil. No layer paints a second specular rim.
+ */
+
+/* 1. Inputs. The runtime overrides these inline on :root. */
+:root {
+  --yt-accent: #0071e3;
+  --yt-background-opacity: 0.24;
+  --yt-surface-alpha: 78%;
+  --yt-material-alpha: 90%;
+  --yt-chrome-alpha: 46%;
+  --yt-control-alpha: 42%;
+  --yt-overlay-alpha: 72%;
+  --yt-dim-alpha: 14%;
+  --yt-blur: 14px;
+  --yt-liquid: 0.56;
+  --yt-lens: 18px;
+  --yt-radius: 14px;
+  --yt-wallpaper-light: none;
+  --yt-wallpaper-dark: none;
+}
+
+/* 2. Tones: light. */
+:root,
+[data-yt-theme="light"] {
+  color-scheme: light;
+  --yt-page: oklch(0.962 0.006 255);
+  --yt-tone-surface: oklch(0.995 0.002 255);
+  --yt-tone-material: oklch(0.952 0.005 258);
+  --yt-tone-chrome: oklch(0.968 0.005 255);
+  --yt-tone-control: oklch(0.918 0.007 258);
+  --yt-tone-overlay: oklch(0.992 0.003 255);
+  --yt-ink: oklch(0.2 0.012 262);
+  --yt-ink-secondary: oklch(0.47 0.014 262);
+  --yt-ink-tertiary: oklch(0.6 0.012 262);
+  --yt-edge: oklch(0.3 0.02 262 / 0.1);
+  --yt-edge-strong: oklch(0.3 0.02 262 / 0.2);
+  --yt-separator: oklch(0.3 0.02 262 / 0.09);
+  --yt-state-hover: oklch(0.25 0.02 262 / 0.05);
+  --yt-state-press: oklch(0.25 0.02 262 / 0.1);
+  --yt-shadow-tint: oklch(0.28 0.03 262);
+  --yt-specular: oklch(1 0 0 / calc(var(--yt-liquid) * 0.85));
+  --yt-lens-light: oklch(1 0 0 / calc(var(--yt-liquid) * 0.5));
+  --yt-accent-ink: color-mix(in oklch, var(--yt-accent) 82%, black);
+  --yt-success: oklch(0.58 0.13 158);
+  --yt-warning: oklch(0.68 0.15 65);
+  --yt-danger: oklch(0.57 0.2 27);
+  --yt-wallpaper: var(--yt-wallpaper-light);
+}
+
+/* 2b. Tones: dark. */
+:root.dark,
+:root[data-yt-theme="dark"],
+[data-yt-scope][data-yt-theme="dark"] {
+  color-scheme: dark;
+  --yt-page: oklch(0.165 0.006 265);
+  --yt-tone-surface: oklch(0.225 0.007 265);
+  --yt-tone-material: oklch(0.275 0.008 265);
+  --yt-tone-chrome: oklch(0.2 0.007 265);
+  --yt-tone-control: oklch(0.335 0.009 265);
+  --yt-tone-overlay: oklch(0.245 0.008 265);
+  --yt-ink: oklch(0.965 0.004 262);
+  --yt-ink-secondary: oklch(0.77 0.01 262);
+  --yt-ink-tertiary: oklch(0.63 0.01 262);
+  --yt-edge: oklch(1 0 0 / 0.1);
+  --yt-edge-strong: oklch(1 0 0 / 0.2);
+  --yt-separator: oklch(1 0 0 / 0.085);
+  --yt-state-hover: oklch(1 0 0 / 0.06);
+  --yt-state-press: oklch(1 0 0 / 0.11);
+  --yt-shadow-tint: oklch(0 0 0);
+  --yt-specular: oklch(1 0 0 / calc(var(--yt-liquid) * 0.16));
+  --yt-lens-light: oklch(1 0 0 / calc(var(--yt-liquid) * 0.14));
+  --yt-accent-ink: color-mix(in oklch, var(--yt-accent) 70%, white);
+  --yt-success: oklch(0.74 0.13 158);
+  --yt-warning: oklch(0.8 0.14 70);
+  --yt-danger: oklch(0.7 0.18 27);
+  --yt-wallpaper: var(--yt-wallpaper-dark);
+}
+
+/* 3. Derived layer tokens. Re-derived on [data-yt-scope] so previews can scope inputs. */
+:root,
+[data-yt-scope] {
+  --yt-layer-page: var(--yt-page);
+  --yt-layer-surface: color-mix(in oklch, var(--yt-tone-surface) var(--yt-surface-alpha), transparent);
+  --yt-layer-material: color-mix(in oklch, var(--yt-tone-material) var(--yt-material-alpha), transparent);
+  --yt-layer-chrome: color-mix(in oklch, var(--yt-tone-chrome) var(--yt-chrome-alpha), transparent);
+  --yt-layer-control: color-mix(in oklch, var(--yt-tone-control) var(--yt-control-alpha), transparent);
+  --yt-layer-overlay: color-mix(in oklch, var(--yt-tone-overlay) var(--yt-overlay-alpha), transparent);
+  --yt-layer-overlay-nested: color-mix(in oklch, var(--yt-tone-overlay) calc(var(--yt-overlay-alpha) * 0.3 + 70%), transparent);
+  --yt-layer-dim: color-mix(in oklch, oklch(0.14 0.01 262) var(--yt-dim-alpha), transparent);
+
+  --yt-filter-surface: blur(var(--yt-blur)) saturate(160%);
+  --yt-filter-chrome: blur(calc(var(--yt-blur) * 1.25)) saturate(180%);
+  --yt-filter-overlay: blur(calc(var(--yt-blur) * 1.6)) saturate(180%);
+
+  --yt-accent-soft: color-mix(in oklch, var(--yt-accent) 12%, transparent);
+  --yt-accent-soft-strong: color-mix(in oklch, var(--yt-accent) 20%, transparent);
+  --yt-focus-ring: color-mix(in oklch, var(--yt-accent) 45%, transparent);
+
+  --yt-rim: inset 0 1px 0 var(--yt-specular), inset 0 0 var(--yt-lens) 0 var(--yt-lens-light);
+  --yt-rim-control: inset 0 1px 0 color-mix(in oklch, var(--yt-specular) 70%, transparent);
+  --yt-shadow-surface:
+    0 1px 2px color-mix(in oklch, var(--yt-shadow-tint) 6%, transparent),
+    0 14px 34px -20px color-mix(in oklch, var(--yt-shadow-tint) 26%, transparent);
+  --yt-shadow-chrome: 0 1px 0 var(--yt-separator);
+  --yt-shadow-control: 0 1px 1px color-mix(in oklch, var(--yt-shadow-tint) 7%, transparent);
+  --yt-shadow-overlay:
+    0 2px 8px color-mix(in oklch, var(--yt-shadow-tint) 9%, transparent),
+    0 30px 80px -24px color-mix(in oklch, var(--yt-shadow-tint) 36%, transparent);
+
+  /* Every corner derives from the single portal radius. 0 is square everywhere. */
+  --radius-shell: calc(var(--yt-radius) * 1.5);
+  --radius-overlay: calc(var(--yt-radius) * 1.25);
+  --radius-surface: var(--yt-radius);
+  --radius-material: calc(var(--yt-radius) * 0.72);
+  --radius-control: calc(var(--yt-radius) * 0.6);
+  --radius-compact: calc(var(--yt-radius) * 0.42);
+  /* Only for semantic pills, status dots and avatars. */
+  --radius-pill: 999px;
+}
+
+/* 4. Framework bridge: shadcn/Tailwind token names used by the portal and kaoyan. */
+:root,
+[data-yt-scope] {
+  --background: var(--yt-page);
+  --foreground: var(--yt-ink);
+  --card: var(--yt-tone-surface);
+  --card-foreground: var(--yt-ink);
+  --popover: var(--yt-layer-overlay);
+  --popover-foreground: var(--yt-ink);
+  --primary: var(--yt-accent);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-muted: var(--yt-accent-soft);
+  --secondary: var(--yt-layer-control);
+  --secondary-foreground: var(--yt-ink);
+  --muted: var(--yt-layer-material);
+  --muted-foreground: var(--yt-ink-secondary);
+  --accent: var(--yt-state-hover);
+  --accent-foreground: var(--yt-ink);
+  --destructive: var(--yt-danger);
+  --success: var(--yt-success);
+  --success-foreground: var(--yt-success);
+  --success-muted: color-mix(in oklch, var(--yt-success) 12%, transparent);
+  --border: var(--yt-edge);
+  --input: var(--yt-edge-strong);
+  --ring: var(--yt-accent);
+  --radius: var(--yt-radius);
+  --surface-background: var(--yt-layer-surface);
+  --sidebar: var(--yt-layer-chrome);
+  --sidebar-foreground: var(--yt-ink);
+  --sidebar-primary: var(--yt-accent);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: var(--yt-state-hover);
+  --sidebar-accent-foreground: var(--yt-ink);
+  --sidebar-border: var(--yt-separator);
+  --sidebar-ring: var(--yt-accent);
+}
+
+/* 5. Page. */
+.yt-page {
+  position: relative;
+  isolation: isolate;
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-page);
+}
+
+.yt-page::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  background-image: var(--yt-wallpaper);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: var(--yt-background-opacity);
+}
+
+html[data-background-style="plain"] .yt-page::before {
+  background-image: none;
+}
+
+html[data-background-style="grid"] .yt-page::before {
+  background-image:
+    linear-gradient(to right, var(--yt-separator) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--yt-separator) 1px, transparent 1px),
+    radial-gradient(ellipse 60% 50% at 12% 0%, var(--yt-accent-soft-strong), transparent 70%);
+  background-size: 6rem 6rem, 6rem 6rem, 100% 100%;
+  background-position: center;
+  opacity: calc(var(--yt-background-opacity) * 2.5);
+}
+
+html[data-background-style="aurora"] .yt-page::before {
+  background-image:
+    radial-gradient(ellipse 52% 44% at 10% 8%, color-mix(in oklch, var(--yt-accent) 34%, transparent), transparent 72%),
+    radial-gradient(ellipse 46% 40% at 92% 22%, color-mix(in oklch, var(--yt-accent) 18%, oklch(0.78 0.12 170 / 0.4)), transparent 74%),
+    radial-gradient(ellipse 60% 44% at 50% 104%, color-mix(in oklch, var(--yt-accent) 20%, transparent), transparent 76%);
+  background-size: cover;
+  opacity: calc(var(--yt-background-opacity) * 2.5);
+}
+
+/* 6. Surface. */
+.yt-surface,
+.glass-panel,
+.app-surface,
+.glass-tile,
+.liquid-lens--preview {
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-surface);
+  background-image: none;
+  border: 1px solid var(--yt-edge);
+  border-radius: var(--radius-surface);
+  box-shadow: var(--yt-shadow-surface), var(--yt-rim);
+  -webkit-backdrop-filter: var(--yt-filter-surface);
+  backdrop-filter: var(--yt-filter-surface);
+}
+
+/* 7. Material. */
+.yt-material,
+.material-surface,
+.material-bar {
+  color: inherit;
+  background-color: var(--yt-layer-material);
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-material);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 8. Chrome. */
+.yt-chrome,
+.glass-chrome,
+.liquid-lens--chrome,
+.liquid-lens--rail {
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-chrome);
+  background-image: none;
+  border-color: var(--yt-separator);
+  box-shadow: var(--yt-shadow-chrome), inset 0 1px 0 var(--yt-specular);
+  -webkit-backdrop-filter: var(--yt-filter-chrome);
+  backdrop-filter: var(--yt-filter-chrome);
+}
+
+/* 9. Control. */
+.yt-control,
+.glass-control,
+.liquid-lens--control {
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-control);
+  background-image: none;
+  border: 1px solid var(--yt-edge);
+  border-radius: var(--radius-control);
+  box-shadow: var(--yt-shadow-control), var(--yt-rim-control);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+:is(.yt-control, .glass-control, .liquid-lens--control, .yt-row):not(:disabled, [aria-disabled="true"]):hover {
+  background-image: linear-gradient(var(--yt-state-hover), var(--yt-state-hover));
+}
+
+:is(button, [role="button"]):is(.yt-control, .glass-control, .liquid-lens--control, .yt-row):not(:disabled, [aria-disabled="true"]):active {
+  background-image: linear-gradient(var(--yt-state-press), var(--yt-state-press));
+  transform: scale(0.98);
+  transition-duration: 60ms;
+}
+
+.yt-control[aria-pressed="true"],
+.yt-control[aria-selected="true"],
+.yt-control[data-state="on"],
+.yt-control.is-selected {
+  color: var(--yt-accent-ink);
+  background-color: var(--yt-accent-soft);
+  border-color: color-mix(in oklch, var(--yt-accent) 30%, transparent);
+}
+
+.yt-button-primary {
+  color: oklch(0.99 0 0);
+  background-color: var(--yt-accent);
+  border: 1px solid color-mix(in oklch, var(--yt-accent) 80%, black);
+  border-radius: var(--radius-control);
+  box-shadow: var(--yt-shadow-control), inset 0 1px 0 oklch(1 0 0 / calc(var(--yt-liquid) * 0.3));
+}
+
+.yt-button-primary:not(:disabled):hover {
+  background-image: linear-gradient(oklch(1 0 0 / 0.08), oklch(1 0 0 / 0.08));
+}
+
+.yt-button-primary:not(:disabled):active {
+  background-image: linear-gradient(oklch(0 0 0 / 0.1), oklch(0 0 0 / 0.1));
+  transform: scale(0.98);
+}
+
+.yt-button-ghost {
+  color: var(--yt-ink);
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+}
+
+.yt-button-ghost:not(:disabled):hover {
+  background-color: var(--yt-state-hover);
+}
+
+.yt-field {
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-control);
+  border: 1px solid var(--yt-edge-strong);
+  border-radius: var(--radius-control);
+  box-shadow: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.yt-field::placeholder {
+  color: var(--yt-ink-tertiary);
+}
+
+.yt-field:focus,
+.yt-field:focus-within {
+  border-color: var(--yt-accent);
+  box-shadow: 0 0 0 3px var(--yt-focus-ring);
+  outline: none;
+}
+
+.yt-row {
+  color: inherit;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-material);
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.yt-row[aria-current="true"],
+.yt-row[aria-selected="true"],
+.yt-row.is-active {
+  background-color: var(--yt-layer-material);
+  border-color: var(--yt-edge);
+}
+
+.yt-pill {
+  border-radius: var(--radius-pill);
+}
+
+/* 9b. Shared site identity and semantic actions.
+ * Layouts may differ, but every product uses the same brand hierarchy and action language.
+ */
+.yt-site-header {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  min-block-size: 3.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem clamp(0.75rem, 2vw, 1.25rem);
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-chrome);
+  border-block-end: 1px solid var(--yt-separator);
+  box-shadow: var(--yt-shadow-chrome), inset 0 1px 0 var(--yt-specular);
+  -webkit-backdrop-filter: var(--yt-filter-chrome);
+  backdrop-filter: var(--yt-filter-chrome);
+}
+
+.yt-site-header__brand {
+  display: inline-flex;
+  min-inline-size: 0;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.yt-site-header__brand-mark {
+  color: var(--yt-accent-ink);
+  font-size: 0.6875rem;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  line-height: 1;
+}
+
+.yt-site-header__divider {
+  inline-size: 1px;
+  block-size: 1rem;
+  flex: none;
+  background: var(--yt-separator);
+}
+
+.yt-site-header__title {
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+}
+
+.yt-site-header__context {
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--yt-ink-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yt-site-header__content {
+  display: flex;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.yt-site-header__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.yt-status {
+  display: inline-flex;
+  min-block-size: 2.25rem;
+  align-items: center;
+  gap: 0.4375rem;
+  padding-inline: 0.625rem;
+  color: var(--yt-ink-secondary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.yt-status::before {
+  inline-size: 0.4375rem;
+  block-size: 0.4375rem;
+  flex: none;
+  content: "";
+  background: var(--yt-ink-tertiary);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--yt-ink-tertiary) 12%, transparent);
+}
+
+.yt-status[data-status="online"]::before,
+.yt-status[data-status="ready"]::before,
+.yt-status[data-status="synced"]::before {
+  background: var(--yt-success);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--yt-success) 14%, transparent);
+}
+
+.yt-status[data-status="warning"]::before,
+.yt-status[data-status="syncing"]::before {
+  background: var(--yt-warning);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--yt-warning) 14%, transparent);
+}
+
+.yt-status[data-status="offline"]::before,
+.yt-status[data-status="error"]::before {
+  background: var(--yt-danger);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--yt-danger) 14%, transparent);
+}
+
+.yt-portal-return,
+.yt-refresh-action {
+  display: inline-flex;
+  min-block-size: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  padding-inline: 0.75rem;
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-control);
+  border: 1px solid var(--yt-edge);
+  border-radius: var(--radius-control);
+  box-shadow: var(--yt-shadow-control), var(--yt-rim-control);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 570;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+:is(.yt-portal-return, .yt-refresh-action):not(:disabled, [aria-disabled="true"]):hover {
+  background-image: linear-gradient(var(--yt-state-hover), var(--yt-state-hover));
+}
+
+:is(.yt-portal-return, .yt-refresh-action):not(:disabled, [aria-disabled="true"]):active {
+  background-image: linear-gradient(var(--yt-state-press), var(--yt-state-press));
+  transform: scale(0.98);
+  transition-duration: 60ms;
+}
+
+:is(.yt-portal-return, .yt-refresh-action):focus-visible {
+  outline: 2px solid var(--yt-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .yt-site-header {
+    gap: 0.5rem;
+    min-block-size: 3.25rem;
+    padding-inline: 0.625rem;
+  }
+
+  .yt-site-header__brand-mark {
+    font-size: 0.625rem;
+  }
+
+  .yt-site-header__context,
+  .yt-status__label,
+  .yt-portal-return__label,
+  .yt-refresh-action__label {
+    display: none;
+  }
+
+  .yt-portal-return,
+  .yt-refresh-action {
+    inline-size: 2.5rem;
+    min-block-size: 2.5rem;
+    padding-inline: 0;
+  }
+}
+
+/* 10. Overlay and dim. */
+.yt-overlay,
+.glass-popover,
+.portal-overlay-surface,
+.liquid-lens--sheet,
+.liquid-lens--dialog {
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-overlay);
+  background-image: none;
+  border: 1px solid var(--yt-edge);
+  box-shadow: var(--yt-shadow-overlay), var(--yt-rim);
+  -webkit-backdrop-filter: var(--yt-filter-overlay);
+  backdrop-filter: var(--yt-filter-overlay);
+}
+
+.yt-overlay,
+.glass-popover {
+  border-radius: var(--radius-overlay);
+}
+
+.yt-dim,
+.portal-overlay-dim {
+  background-color: var(--yt-layer-dim);
+  background-image: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 11. One backdrop per visual level. Anything nested inside a blurred layer is flat. */
+:is(.yt-surface, .glass-panel, .app-surface, .glass-tile, .yt-chrome, .glass-chrome, .yt-overlay, .glass-popover, .portal-overlay-surface, .liquid-lens--chrome, .liquid-lens--rail, .liquid-lens--sheet, .liquid-lens--dialog, .liquid-lens--preview)
+  :is(.yt-surface, .glass-panel, .app-surface, .glass-tile, .yt-chrome, .glass-chrome, .liquid-lens--chrome, .liquid-lens--rail, .liquid-lens--preview) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+:is(.yt-surface, .glass-panel, .app-surface, .glass-tile, .yt-chrome, .glass-chrome, .liquid-lens--chrome, .liquid-lens--rail)
+  :is(.yt-overlay, .glass-popover, .portal-overlay-surface, .liquid-lens--sheet, .liquid-lens--dialog) {
+  background-color: var(--yt-layer-overlay-nested);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 12. Focus. Always visible for keyboard users, never for pointer clicks. */
+:where(.yt-control, .yt-button-primary, .yt-button-ghost, .yt-row, .glass-control):focus-visible {
+  outline: 2px solid var(--yt-accent);
+  outline-offset: 2px;
+}
+
+/* 13. Accessibility preferences. */
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  [data-yt-scope] {
+    --yt-layer-surface: var(--yt-tone-surface);
+    --yt-layer-material: var(--yt-tone-material);
+    --yt-layer-chrome: var(--yt-tone-chrome);
+    --yt-layer-control: var(--yt-tone-control);
+    --yt-layer-overlay: var(--yt-tone-overlay);
+    --yt-layer-overlay-nested: var(--yt-tone-overlay);
+    --yt-filter-surface: none;
+    --yt-filter-chrome: none;
+    --yt-filter-overlay: none;
+  }
+
+  .yt-page::before {
+    opacity: calc(var(--yt-background-opacity) * 0.4);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root,
+  [data-yt-scope] {
+    --yt-layer-surface: var(--yt-tone-surface);
+    --yt-layer-material: var(--yt-tone-material);
+    --yt-layer-chrome: var(--yt-tone-chrome);
+    --yt-layer-control: var(--yt-tone-control);
+    --yt-layer-overlay: var(--yt-tone-overlay);
+    --yt-layer-overlay-nested: var(--yt-tone-overlay);
+    --yt-filter-surface: none;
+    --yt-filter-chrome: none;
+    --yt-filter-overlay: none;
+    --yt-edge: color-mix(in oklch, var(--yt-ink) 45%, transparent);
+    --yt-edge-strong: color-mix(in oklch, var(--yt-ink) 65%, transparent);
+    --yt-separator: color-mix(in oklch, var(--yt-ink) 32%, transparent);
+    --yt-ink-secondary: color-mix(in oklch, var(--yt-ink) 82%, var(--yt-page));
+    --yt-ink-tertiary: color-mix(in oklch, var(--yt-ink) 70%, var(--yt-page));
+  }
+
+  .yt-page::before {
+    opacity: calc(var(--yt-background-opacity) * 0.25);
+  }
+
+  :where(.yt-control, .yt-button-primary, .yt-row, .glass-control):focus-visible {
+    outline-width: 3px;
+  }
+}
+
+@media (forced-colors: active) {
+  .yt-surface,
+  .yt-material,
+  .yt-chrome,
+  .yt-control,
+  .yt-field,
+  .yt-overlay,
+  .glass-panel,
+  .glass-chrome,
+  .glass-control,
+  .glass-popover {
+    border: 1px solid CanvasText;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yt-control,
+  .yt-field,
+  .yt-row,
+  .yt-button-primary,
+  .glass-control {
+    transition: none;
+  }
+
+  :is(button, [role="button"]):is(.yt-control, .glass-control, .yt-row, .yt-button-primary):active {
+    transform: none;
+  }
+}

@@ -61,6 +61,13 @@ test("builds interactive OpenCode provider config", () => {
   assert.deepEqual(config.provider.yeutech.models["gpt-5.6-sol"].modalities.input, ["text", "image"]);
 });
 
+test("declared reasoning levels become exact OpenCode variants", () => {
+  const models = normalizeModelCatalog({ data: [{ id: "reasoning-model", context_length: 500000, max_output_tokens: 8000, supported_input_modalities: ["text"], supported_output_modalities: ["text"], thinking: { levels: ["low", "high"] } }] });
+  assert.deepEqual(models[0].reasoningEfforts, ["low", "high"]);
+  const config = buildOpenCodeConfig(models);
+  assert.deepEqual(config.provider.yeutech.models["reasoning-model"].variants, { low: { reasoningEffort: "low" }, high: { reasoningEffort: "high" } });
+});
+
 test("sets GPT and Gemini effective compaction budgets to 80%", () => {
   const models = [
     { id: "gpt-6-sol", name: "GPT", selectable: true, limit: { context: 51200, input: 51200, output: 10000 }, modalities: { input: ["text"], output: ["text"] } },

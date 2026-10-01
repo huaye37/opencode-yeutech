@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createAgentBff } from "../src/agent-bff.mjs";
+import { createAgentBff, sessionPermissionRules } from "../src/agent-bff.mjs";
 import { readActivityLease, reserveActivityLease } from "../src/activity-lease.mjs";
 import { createProjectionEventStore } from "../src/projection-event-store.mjs";
 
@@ -32,6 +32,7 @@ async function listen(server) {
 }
 
 async function close(server) {
+  server.closeAllConnections?.();
   await new Promise((resolve) => server.close(resolve));
 }
 
@@ -48,7 +49,7 @@ async function withBff(upstreamHandler, run, options = {}) {
   });
   const baseURL = await listen(bff);
   try {
-    await run(baseURL);
+    await run(baseURL, upstreamURL);
   } finally {
     await close(bff);
     await close(upstream);
@@ -63,6 +64,63 @@ test("rejects anonymous API, migration, and static requests before reaching an u
     assert.equal((await fetch(`${baseURL}/api/migration/projects`)).status, 401);
     assert.equal((await fetch(baseURL)).status, 401);
     assert.equal(hits, 0);
+  });
+});
+
+test("protects the image plugin execution API with its independent service token", async () => {
+  let generated = null;
+  const secret = "plugin-secret-01234567890123456789";
+  const workerToken = `v1.3.${createHmac("sha256", secret).update("portal:3").digest("base64url")}`;
+  await withBff(() => {}, async (baseURL) => {
+    assert.equal((await fetch(`${baseURL}/api/plugins/v1/image-generation/models`)).status, 401);
+    const models = await fetch(`${baseURL}/api/plugins/v1/image-generation/models`, { headers: { authorization: `Bearer ${secret}` } });
+    assert.equal(models.status, 200);
+    assert.deepEqual((await models.json()).data, [{ id: "gemini-image" }]);
+    const created = await fetch(`${baseURL}/api/plugins/v1/image-generation/agent-runs`, { method: "POST", headers: { authorization: `Bearer ${workerToken}`, "content-type": "application/json" }, body: JSON.stringify({ prompt: "test", portalUserId: 999 }) });
+    assert.equal(created.status, 201);
+    assert.equal((await created.json()).data.id, "img_test");
+    assert.equal(generated.prompt, "test");
+    assert.equal(generated.portalUserId, 3);
+    const foreignToken = `v1.4.${createHmac("sha256", secret).update("portal:3").digest("base64url")}`;
+    assert.equal((await fetch(`${baseURL}/api/plugins/v1/image-generation/agent-runs`, { method: "POST", headers: { authorization: `Bearer ${foreignToken}`, "content-type": "application/json" }, body: "{}" })).status, 401);
+    assert.equal((await fetch(`${baseURL}/api/plugins/v1/image-generation/business-runs`, { method: "POST", headers: { authorization: `Bearer ${workerToken}`, "content-type": "application/json" }, body: JSON.stringify({ consumer: "novel" }) })).status, 401);
+  }, {
+    pluginServiceToken: secret,
+    imagePluginService: {
+      listModels: async () => [{ id: "gemini-image" }],
+      generateAgent: async (input) => { generated = input; return { id: "img_test" }; },
+      listAgentArtifacts: () => [], bindSession: () => {}, close: () => {},
+    },
+  });
+});
+
+test("propagates an aborted image plugin HTTP request to the provider signal", async () => {
+  const secret = "plugin-abort-secret-0123456789012345";
+  const workerToken = `v1.3.${createHmac("sha256", secret).update("portal:3").digest("base64url")}`;
+  let providerAborted;
+  const aborted = new Promise((resolve) => { providerAborted = resolve; });
+  await withBff(() => {}, async (baseURL) => {
+    const controller = new AbortController();
+    const pending = fetch(`${baseURL}/api/plugins/v1/image-generation/agent-runs`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${workerToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "cancel me" }),
+      signal: controller.signal,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    controller.abort();
+    await assert.rejects(pending, (error) => error.name === "AbortError");
+    await aborted;
+  }, {
+    pluginServiceToken: secret,
+    imagePluginService: {
+      listModels: async () => [],
+      generateAgent: async (input) => new Promise((_resolve, reject) => input.signal.addEventListener("abort", () => {
+        providerAborted();
+        reject(input.signal.reason);
+      }, { once: true })),
+      listAgentArtifacts: () => [], bindSession: () => {}, close: () => {},
+    },
   });
 });
 
@@ -94,6 +152,51 @@ test("returns bounded worker-starting failures with Retry-After before forwardin
   });
 });
 
+test("rejects new prompts with a clear retryable error during proxy maintenance", async () => {
+  const maintenance = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end('{"updating":true,"recentInterrupted":true}'));
+  const maintenanceURL = await listen(maintenance);
+  let upstreamHits = 0;
+  try {
+    await withBff(() => { upstreamHits += 1; }, async (baseURL) => {
+      const response = await fetch(`${baseURL}/api/agent/session/ses_wait/prompt_async`, {
+        method: "POST", headers: { ...identityHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ model: { providerID: "yeutech", modelID: "ready" }, parts: [{ type: "text", text: "continue" }] }),
+      });
+      assert.equal(response.status, 503);
+      assert.deepEqual((await response.json()).error, {
+        code: "workbench_updating", message: "AI 工作台正在更新，请稍后在原会话重试",
+        retryable: true, scope: "worker", recoveryAction: "retry",
+      });
+      assert.equal(upstreamHits, 0);
+    }, { proxyMaintenanceURL: maintenanceURL });
+  } finally { await close(maintenance); }
+});
+
+test("rejects new image jobs during proxy maintenance without calling the generator", async () => {
+  const secret = "plugin-maintenance-secret-01234567";
+  const workerToken = `v1.3.${createHmac("sha256", secret).update("portal:3").digest("base64url")}`;
+  const maintenance = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end('{"updating":true,"recentInterrupted":true}'));
+  const maintenanceURL = await listen(maintenance);
+  let generated = 0;
+  try {
+    await withBff(() => {}, async (baseURL) => {
+      for (const [route, token] of [["agent-runs", workerToken], ["business-runs", secret]]) {
+        const response = await fetch(`${baseURL}/api/plugins/v1/image-generation/${route}`, {
+          method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ prompt: "draw" }),
+        });
+        assert.equal(response.status, 503);
+        assert.equal((await response.json()).error.code, "workbench_updating");
+      }
+      assert.equal(generated, 0);
+    }, {
+      proxyMaintenanceURL: maintenanceURL,
+      pluginServiceToken: secret,
+      imagePluginService: { listModels: async () => [], generateAgent: async () => { generated++; }, generateBusiness: async () => { generated++; } },
+    });
+  } finally { await close(maintenance); }
+});
+
 test("loads the passive workbench and migration history without starting a portal worker", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-passive-bootstrap-"));
   const workspace = path.join(root, "workspace");
@@ -106,6 +209,8 @@ test("loads the passive workbench and migration history without starting a porta
   const projections = createProjectionEventStore(controlPlaneDatabasePath);
   projections.append(3, "ses_passive", "message:msg_user", "message.upsert", { id: "msg_user", role: "user", text: "passive question", createdAt: 1 });
   projections.append(3, "ses_passive", "message:msg_assistant", "message.upsert", { id: "msg_assistant", role: "assistant", text: "passive answer", createdAt: 2 });
+  projections.append(3, "ses_passive", "session", "session.state", { id: "ses_passive", status: null });
+  projections.append(3, "ses_passive", "projection", "projection.meta", { stats: { turns: 1 }, trajectory: [{ id: "tool:1" }] });
   projections.close();
   let workerStarts = 0;
   try {
@@ -116,6 +221,18 @@ test("loads the passive workbench and migration history without starting a porta
       assert.equal((await fetch(`${baseURL}/api/migration/projects`, { headers: identityHeaders() })).status, 200);
       const passive = await fetch(`${baseURL}/api/workbench/sessions/ses_passive/messages?limit=10`, { headers: identityHeaders() }).then((response) => response.json());
       assert.deepEqual(passive.records.map((message) => message.text), ["passive question", "passive answer"]);
+      assert.equal(passive.stats.turns, 1);
+      assert.equal(passive.session.status, null);
+      assert.deepEqual(passive.artifacts, [{ id: "img_passive" }]);
+      const modelPreference = await fetch(`${baseURL}/api/workbench/session-preferences/ses_passive`, {
+        method: "PATCH",
+        headers: { ...identityHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ modelId: "ready" }),
+      });
+      assert.equal(modelPreference.status, 200, await modelPreference.clone().text());
+      assert.equal((await modelPreference.json()).data.modelId, "ready");
+      const refreshedBootstrap = await fetch(`${baseURL}/api/workbench/bootstrap`, { headers: identityHeaders() }).then((response) => response.json());
+      assert.equal(refreshedBootstrap.sessionPreferences.ses_passive.modelId, "ready");
       assert.equal((await fetch(`${baseURL}/api/workbench/profiles`, { headers: identityHeaders() })).status, 200);
       const control = await fetch(`${baseURL}/api/workbench/control`, { headers: identityHeaders() }).then((response) => response.json());
       assert.equal(control.runtimeBudget.requestedInteractiveWorkers, 0);
@@ -131,9 +248,117 @@ test("loads the passive workbench and migration history without starting a porta
       inspectWorker: async () => ({ workspace, root, upstream: new URL("http://127.0.0.1:18199"), active: false }),
       ensureWorker: async () => { workerStarts += 1; throw new Error("worker should remain asleep"); },
       controlPlaneDatabasePath,
+      imagePluginService: { listAgentArtifacts: () => [{ id: "img_passive" }], bindSession: () => {}, close: () => {} },
     });
   } finally {
     await close(catalog); await close(migration); await rm(root, { recursive: true });
+  }
+});
+
+test("persists empty session drafts without waking a worker and materializes only on first send", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-bff-drafts-"));
+  const controlPlaneDatabasePath = path.join(directory, "control.sqlite");
+  const userWorkspace = path.join(directory, "user-3");
+  const otherWorkspace = path.join(directory, "user-4");
+  let workerStarts = 0;
+  let workerUpstream = null;
+  let createdSessionBody = null;
+  try {
+    await mkdir(userWorkspace);
+    await mkdir(otherWorkspace);
+    await withBff((request, response) => {
+      const incoming = new URL(request.url, "http://127.0.0.1");
+      if (request.method === "POST" && incoming.pathname === "/session") {
+        const chunks = [];
+        request.on("data", (chunk) => chunks.push(chunk));
+        request.on("end", () => {
+          createdSessionBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(JSON.stringify({ id: "ses_materialized", title: createdSessionBody.title, time: { created: 1, updated: 1 } }));
+        });
+        return;
+      }
+      response.writeHead(404).end();
+    }, async (baseURL, upstreamURL) => {
+      workerUpstream = new URL(upstreamURL);
+      const created = await fetch(`${baseURL}/api/workbench/session-drafts`, {
+        method: "POST",
+        headers: { ...identityHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ title: "刷新保留", modelId: "gpt-5.6-sol" }),
+      });
+      assert.equal(created.status, 201);
+      const draft = (await created.json()).data;
+      assert.equal(workerStarts, 0);
+
+      const refreshedResponse = await fetch(`${baseURL}/api/workbench/session-index`, { headers: identityHeaders() });
+      assert.equal(refreshedResponse.status, 200, await refreshedResponse.clone().text());
+      const refreshed = await refreshedResponse.json();
+      assert.equal(refreshed.data.find((item) => item.id === draft.id)?.title, "刷新保留");
+      assert.equal(workerStarts, 0);
+
+      const foreignResponse = await fetch(`${baseURL}/api/workbench/session-index`, { headers: identityHeaders(identity({ sub: 4, username: "other" })) });
+      assert.equal(foreignResponse.status, 200, await foreignResponse.clone().text());
+      const foreign = await foreignResponse.json();
+      assert.equal(foreign.data.some((item) => item.id === draft.id), false);
+
+      const materialized = await fetch(`${baseURL}/api/workbench/session-drafts/${draft.id}/materialize`, { method: "POST", headers: identityHeaders() });
+      assert.equal(materialized.status, 201);
+      assert.equal((await materialized.json()).data.id, "ses_materialized");
+      assert.equal(workerStarts, 1);
+      assert.deepEqual(createdSessionBody, { title: "刷新保留" });
+      const after = await fetch(`${baseURL}/api/workbench/session-index`, { headers: identityHeaders() }).then((response) => response.json());
+      assert.equal(after.data.some((item) => item.id === draft.id), false);
+    }, {
+      users: [
+        { portalUserId: 3, username: "ryan", workspace: userWorkspace },
+        { portalUserId: 4, username: "other", workspace: otherWorkspace },
+      ],
+      inspectWorker: async (principal) => ({ workspace: principal.portalUserId === 3 ? userWorkspace : otherWorkspace, upstream: null, active: false }),
+      ensureWorker: async (principal) => {
+        workerStarts += 1;
+        return { workspace: principal.portalUserId === 3 ? userWorkspace : otherWorkspace, upstream: workerUpstream };
+      },
+      controlPlaneDatabasePath,
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("restores active session state during bootstrap without starting a sleeping worker", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-bff-active-bootstrap-"));
+  const workspace = path.join(directory, "workspace");
+  const catalog = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end('{"data":[{"id":"ready","context_length":128000,"max_input_tokens":120000,"max_output_tokens":8000,"supported_input_modalities":["text"],"supported_output_modalities":["text"]}]}'));
+  const catalogURL = await listen(catalog);
+  let workerStarts = 0;
+  let workerUpstream = null;
+  try {
+    await mkdir(workspace);
+    await withBff((request, response) => {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      response.writeHead(200, { "content-type": "application/json" });
+      if (pathname === "/session/status") return response.end('{"ses_running":{"type":"busy"}}');
+      if (pathname === "/permission") return response.end('[{"id":"perm_1","sessionID":"ses_running"}]');
+      return response.end("[]");
+    }, async (baseURL, upstreamURL) => {
+      workerUpstream = new URL(upstreamURL);
+      const response = await fetch(`${baseURL}/api/workbench/bootstrap`, { headers: identityHeaders() });
+      assert.equal(response.status, 200);
+      const bootstrap = await response.json();
+      assert.deepEqual(bootstrap.states, { ses_running: { type: "busy" } });
+      assert.deepEqual(bootstrap.permissions, [{ id: "perm_1", sessionID: "ses_running" }]);
+      assert.equal(bootstrap.workerActive, true);
+      assert.equal(workerStarts, 0);
+    }, {
+      inspectWorker: async (_principal) => ({ workspace, upstream: workerUpstream, active: true }),
+      ensureWorker: async () => { workerStarts += 1; throw new Error("bootstrap must not start a worker"); },
+      modelCatalogURL: catalogURL,
+      modelCatalogToken: "catalog-secret",
+      controlPlaneDatabasePath: path.join(directory, "control.sqlite"),
+    });
+  } finally {
+    await close(catalog);
+    await rm(directory, { recursive: true, force: true });
   }
 });
 
@@ -424,22 +649,32 @@ test("heartbeats and releases portal prompt activity from snapshots and aborts",
   await writeFile(modelConfigPath, JSON.stringify({ provider: { yeutech: { models: { ready: {} } } } }));
   let busy = false;
   let failPrompt = false;
+  let promptRequests = 0;
   const catalog = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end('{"data":[{"id":"ready","context_length":128000,"max_input_tokens":120000,"max_output_tokens":8000,"supported_input_modalities":["text"],"supported_output_modalities":["text"]}]}'));
   const catalogURL = await listen(catalog);
   try {
     await withBff((request, response) => {
       const incoming = new URL(request.url, "http://127.0.0.1");
       if (incoming.pathname === "/session/status") return response.writeHead(200, { "content-type": "application/json" }).end(busy ? '{"ses_lease":{"type":"busy"}}' : "{}");
-      if (request.method === "POST" && incoming.pathname.endsWith("/prompt_async")) return failPrompt ? response.writeHead(500).end("failed") : response.writeHead(204).end();
+      if (request.method === "POST" && incoming.pathname.endsWith("/prompt_async")) {
+        promptRequests += 1;
+        return failPrompt ? response.writeHead(500).end("failed") : response.writeHead(204).end();
+      }
       if (request.method === "POST" && incoming.pathname.endsWith("/abort")) return response.writeHead(200, { "content-type": "application/json" }).end("true");
       if (incoming.pathname === "/session/ses_lease") return response.writeHead(200, { "content-type": "application/json" }).end('{"id":"ses_lease"}');
       response.writeHead(200, { "content-type": "application/json" }).end("[]");
     }, async (baseURL) => {
-      const prompt = () => fetch(`${baseURL}/api/agent/session/ses_lease/prompt_async`, { method: "POST", headers: { ...identityHeaders(), "content-type": "application/json" }, body: JSON.stringify({ model: { providerID: "yeutech", modelID: "ready" }, parts: [] }) });
+      const prompt = (text = "run") => fetch(`${baseURL}/api/agent/session/ses_lease/prompt_async`, { method: "POST", headers: { ...identityHeaders(), "content-type": "application/json" }, body: JSON.stringify({ model: { providerID: "yeutech", modelID: "ready" }, parts: [{ type: "text", text }] }) });
       busy = true;
       assert.equal((await prompt()).status, 204);
       assert.deepEqual((await readActivityLease({ activityLeaseFile: leaseFile })).sessionIds, ["ses_lease"]);
-      assert.equal((await fetch(`${baseURL}/api/workbench/sessions/ses_lease/snapshot`, { headers: identityHeaders() })).status, 200);
+      const queuedResponse = await prompt("刷新后不能消失");
+      assert.equal(queuedResponse.status, 202);
+      assert.equal((await queuedResponse.json()).data.delivery, "steer");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const steeredSnapshot = await (await fetch(`${baseURL}/api/workbench/sessions/ses_lease/snapshot`, { headers: identityHeaders() })).json();
+      assert.equal(steeredSnapshot.inbox.length, 0);
+      assert.equal(promptRequests, 2);
       assert.ok(await readActivityLease({ activityLeaseFile: leaseFile }));
       busy = false;
       assert.equal((await fetch(`${baseURL}/api/workbench/sessions/ses_lease/snapshot`, { headers: identityHeaders() })).status, 200);
@@ -457,7 +692,9 @@ test("heartbeats and releases portal prompt activity from snapshots and aborts",
       modelCatalogURL: catalogURL,
       modelCatalogToken: "token",
       modelConfigPath,
+      controlPlaneDatabasePath: path.join(root, "control.sqlite"),
       activityLeaseMs: 5_000,
+      sessionInboxPollMs: 10,
     });
   } finally { await close(catalog); await rm(root, { recursive: true }); }
 });
@@ -548,7 +785,7 @@ test("lists and answers only the signed user's pending permissions and modifies 
         const chunks = [];
         for await (const chunk of request) chunks.push(chunk);
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        if (body.reply === "once") await writeFile(target, "approved");
+        if (body.reply === "once" || body.reply === "always") await writeFile(target, body.reply);
         pending.set(3, []);
         response.writeHead(200, { "content-type": "application/json" }).end("true");
         return;
@@ -570,13 +807,87 @@ test("lists and answers only the signed user's pending permissions and modifies 
     assert.deepEqual(await fetch(`${baseURL}/api/agent/permission`, { headers: ownerHeaders }).then((response) => response.json()), pending.get(3));
     assert.equal((await fetch(`${baseURL}/api/agent/permission/per_user3/reply`, { method: "POST", headers: otherHeaders, body: JSON.stringify({ reply: "once" }) })).status, 404);
     assert.equal(await readFile(target, "utf8"), "before");
-    assert.equal((await fetch(`${baseURL}/api/agent/permission/per_user3/reply`, { method: "POST", headers: ownerHeaders, body: JSON.stringify({ reply: "always" }) })).status, 400);
-    assert.equal((await fetch(`${baseURL}/api/agent/permission/per_user3/reply`, { method: "POST", headers: ownerHeaders, body: JSON.stringify({ reply: "once", injected: true }) })).status, 200);
-    assert.equal(await readFile(target, "utf8"), "approved");
+    assert.equal((await fetch(`${baseURL}/api/agent/permission/per_user3/reply`, { method: "POST", headers: ownerHeaders, body: JSON.stringify({ reply: "always", injected: true }) })).status, 200);
+    assert.equal(await readFile(target, "utf8"), "always");
     assert.deepEqual(await fetch(`${baseURL}/api/agent/permission`, { headers: ownerHeaders }).then((response) => response.json()), []);
   } finally {
     await close(bff);
     await Promise.all([...servers.values()].map((item) => close(item.server)));
+    await rm(root, { recursive: true });
+  }
+});
+
+test("maps workbench permission modes to bounded OpenCode session rules", () => {
+  const ask = sessionPermissionRules("ask");
+  const smart = sessionPermissionRules("smart", { generate_image: false });
+  const full = sessionPermissionRules("full");
+  assert.equal(ask.findLast((rule) => rule.permission === "edit").action, "ask");
+  assert.equal(smart.findLast((rule) => rule.permission === "edit").action, "allow");
+  assert.equal(smart.findLast((rule) => rule.permission === "bash").action, "ask");
+  assert.equal(smart.findLast((rule) => rule.permission === "generate_image").action, "deny");
+  assert.equal(full.findLast((rule) => rule.permission === "*").action, "allow");
+  for (const rules of [ask, smart, full]) assert.equal(rules.at(-1).permission, "external_directory");
+});
+
+test("applies full access immediately and clears existing permission prompts for the session", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-permission-mode-"));
+  const databasePath = path.join(root, "control.sqlite");
+  let forwardedRules = null;
+  const replies = [];
+  try {
+    await withBff(async (request, response) => {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      if (request.method === "GET" && pathname === "/session/ses_full") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ id: "ses_full", title: "Full access", directory: root }));
+        return;
+      }
+      if (request.method === "PATCH" && pathname === "/session/ses_full") {
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        forwardedRules = JSON.parse(Buffer.concat(chunks).toString("utf8")).permission;
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ id: "ses_full", directory: root }));
+        return;
+      }
+      if (request.method === "GET" && pathname === "/permission") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify([
+          { id: "per_one", sessionID: "ses_full", permission: "bash" },
+          { id: "per_two", sessionID: "ses_full", permission: "edit" },
+          { id: "per_other", sessionID: "ses_other", permission: "bash" },
+        ]));
+        return;
+      }
+      if (request.method === "POST" && /^\/permission\/per_(?:one|two)\/reply$/.test(pathname)) {
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        replies.push({ pathname, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) });
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end("true");
+        return;
+      }
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end("{}");
+    }, async (baseURL) => {
+      const response = await fetch(`${baseURL}/api/workbench/sessions/ses_full/permission-mode`, {
+        method: "PATCH",
+        headers: { ...identityHeaders(), "content-type": "application/json" },
+        body: JSON.stringify({ permissionMode: "full" }),
+      });
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.data.permissionMode, "full");
+      assert.equal(payload.data.clearedPermissions, 2);
+      assert.equal(forwardedRules.findLast((rule) => rule.permission === "*").action, "allow");
+      assert.equal(forwardedRules.at(-1).permission, "external_directory");
+      assert.deepEqual(replies.map((item) => item.pathname).sort(), ["/permission/per_one/reply", "/permission/per_two/reply"]);
+      assert.ok(replies.every((item) => item.body.reply === "always"));
+    }, {
+      users: [{ portalUserId: 3, username: "ryan", workspace: root }],
+      controlPlaneDatabasePath: databasePath,
+    });
+  } finally {
     await rm(root, { recursive: true });
   }
 });
@@ -637,6 +948,7 @@ test("enforces the BFF request body limit", async () => {
 test("exposes safe model capabilities and blocks incomplete models before OpenCode", async () => {
   let upstreamHits = 0;
   let forwardedPrompt = null;
+  let forwardedPermission = null;
   const configRoot = await mkdtemp(path.join(os.tmpdir(), "yeutech-agent-models-"));
   const workspace = path.join(configRoot, "workspace");
   const project = path.join(workspace, "Project");
@@ -667,7 +979,9 @@ test("exposes safe model capabilities and blocks incomplete models before OpenCo
       const chunks = [];
       request.on("data", (chunk) => chunks.push(chunk));
       request.on("end", () => {
-        forwardedPrompt = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (request.method === "PATCH") forwardedPermission = payload.permission;
+        else forwardedPrompt = payload;
         response.writeHead(204);
         response.end();
       });
@@ -705,7 +1019,9 @@ test("exposes safe model capabilities and blocks incomplete models before OpenCo
         body: JSON.stringify({ model: { providerID: "yeutech", modelID: "ready-model" }, yeutech: { workload: "general-agent", project: "Project", paths: ["source.txt"] }, parts: [{ type: "text", text: "use source" }] }),
       });
       assert.equal(ready.status, 204);
-      assert.equal(upstreamHits, 1);
+      assert.equal(upstreamHits, 2);
+      assert.equal(forwardedPermission.findLast((rule) => rule.permission === "bash").action, "ask");
+      assert.equal(forwardedPermission.at(-1).permission, "external_directory");
       assert.equal("yeutech" in forwardedPrompt, false);
       assert.match(forwardedPrompt.parts[0].text, /YEUTECH Context Receipt/);
       assert.match(forwardedPrompt.parts[0].text, /source\.txt@/);
@@ -1021,6 +1337,159 @@ test("streams replayable durable projection events and releases prompt activity 
       controlPlaneDatabasePath: path.join(directory, "control.sqlite"),
       activityLeaseMs: 5_000,
     });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("persists a provider session error over an empty assistant and replays it after reconnect", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-bff-session-error-"));
+  const leaseFile = path.join(directory, "activity.json");
+  const stateFile = path.join(directory, "model-state.json");
+  const controlPlaneDatabasePath = path.join(directory, "control.sqlite");
+  try {
+    await reserveActivityLease({ activityLeaseFile: leaseFile }, { sessionId: "ses_failed", reasons: ["portal-prompt"], durationMs: 5_000 });
+    await withBff((request, response) => {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      response.setHeader("content-type", pathname === "/event" ? "text/event-stream" : "application/json");
+      if (pathname === "/event") {
+        response.end("data: {\"type\":\"session.error\",\"properties\":{\"sessionID\":\"ses_failed\",\"error\":{\"name\":\"APIError\",\"data\":{\"code\":\"model_not_found\",\"message\":\"model claude-3-7-sonnet-20250219 returned 404\"}}}}\r\n\r\ndata: {\"type\":\"session.idle\",\"properties\":{\"sessionID\":\"ses_failed\"}}\r\n\r\n");
+        return;
+      }
+      if (pathname === "/session/ses_failed") return response.end(JSON.stringify({ id: "ses_failed", title: "failed" }));
+      if (pathname === "/session/ses_failed/message") return response.end(JSON.stringify([
+        { info: { id: "msg_user", sessionID: "ses_failed", role: "user", time: { created: 1 } }, parts: [{ type: "text", text: "draw" }] },
+        { info: { id: "msg_assistant", sessionID: "ses_failed", role: "assistant", modelID: "claude-3-7-sonnet-20250219", time: { created: 2 }, tokens: { input: 0, output: 0, reasoning: 0 } }, parts: [] },
+      ]));
+      if (pathname === "/session/status") return response.end(JSON.stringify({}));
+      return response.end(JSON.stringify([]));
+    }, async (baseURL) => {
+      const streamed = await fetch(`${baseURL}/api/workbench/sessions/ses_failed/events`, { headers: identityHeaders() }).then((response) => response.text());
+      assert.match(streamed, /model_not_found/);
+      assert.match(streamed, /model claude-3-7-sonnet-20250219 returned 404/);
+      assert.equal(await readActivityLease({ activityLeaseFile: leaseFile }), null);
+
+      const snapshot = await fetch(`${baseURL}/api/workbench/sessions/ses_failed/snapshot`, { headers: identityHeaders() }).then((response) => response.json());
+      assert.deepEqual(snapshot.messages.at(-1).error, {
+        code: "model_not_found",
+        message: "model claude-3-7-sonnet-20250219 returned 404",
+      });
+      assert.deepEqual(snapshot.session.error, snapshot.messages.at(-1).error);
+      await fetch(`${baseURL}/api/workbench/sessions/ses_failed/events`, { headers: identityHeaders() }).then((response) => response.text());
+      const states = JSON.parse(await readFile(stateFile, "utf8"));
+      assert.equal(Object.values(states)[0].status, "quarantined");
+      assert.equal(Object.values(states)[0].reason, "model_not_found");
+      assert.equal(Object.values(states)[0].failureCount, 1);
+    }, {
+      users: [{ portalUserId: 3, username: "ryan", workspace: WORKSPACE, activityLeaseFile: leaseFile }],
+      controlPlaneDatabasePath,
+      modelRuntimeStatePath: stateFile,
+    });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("turns a provider content-risk rejection into a readable assistant result while retaining the raw reason", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-bff-content-risk-"));
+  const controlPlaneDatabasePath = path.join(directory, "control.sqlite");
+  try {
+    await withBff((request, response) => {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      response.setHeader("content-type", pathname === "/event" ? "text/event-stream" : "application/json");
+      if (pathname === "/event") {
+        response.end("data: {\"type\":\"session.error\",\"properties\":{\"sessionID\":\"ses_risk\",\"error\":{\"name\":\"APIError\",\"data\":{\"statusCode\":400,\"message\":\"Content Exists Risk\"}}}}\n\ndata: {\"type\":\"session.idle\",\"properties\":{\"sessionID\":\"ses_risk\"}}\n\n");
+        return;
+      }
+      if (pathname === "/session/ses_risk") return response.end(JSON.stringify({ id: "ses_risk", title: "risk" }));
+      if (pathname === "/session/ses_risk/message") return response.end(JSON.stringify([
+        { info: { id: "msg_user", sessionID: "ses_risk", role: "user", time: { created: 1 } }, parts: [{ type: "text", text: "continue" }] },
+        { info: { id: "msg_assistant", sessionID: "ses_risk", role: "assistant", modelID: "deepseek-v4-pro", time: { created: 2 }, tokens: { input: 113708, output: 0, reasoning: 0 } }, parts: [] },
+      ]));
+      if (pathname === "/session/status") return response.end(JSON.stringify({}));
+      return response.end(JSON.stringify([]));
+    }, async (baseURL) => {
+      await fetch(`${baseURL}/api/workbench/sessions/ses_risk/events`, { headers: identityHeaders() }).then((response) => response.text());
+      const snapshot = await fetch(`${baseURL}/api/workbench/sessions/ses_risk/snapshot`, { headers: identityHeaders() }).then((response) => response.json());
+      assert.equal(snapshot.messages.at(-1).error.code, "content_risk");
+      assert.match(snapshot.messages.at(-1).error.message, /当前模型不能处理这段会话内容/);
+      assert.match(snapshot.messages.at(-1).error.message, /Content Exists Risk/);
+      assert.equal(snapshot.session.error.message, snapshot.messages.at(-1).error.message);
+    }, {
+      users: [{ portalUserId: 3, username: "ryan", workspace: WORKSPACE, activityLeaseFile: path.join(directory, "activity.json") }],
+      controlPlaneDatabasePath,
+      modelRuntimeStatePath: path.join(directory, "model-state.json"),
+    });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("persists a session error that arrives before any assistant message", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-bff-early-session-error-"));
+  try {
+    await withBff((request, response) => {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      response.setHeader("content-type", pathname === "/event" ? "text/event-stream" : "application/json");
+      if (pathname === "/event") return response.end("data: {\"type\":\"session.error\",\"properties\":{\"sessionID\":\"ses_early\",\"error\":{\"data\":{\"code\":\"auth_unavailable\",\"message\":\"provider authorization expired\"}}}}\n\n");
+      if (pathname === "/session/ses_early") return response.end(JSON.stringify({ id: "ses_early", title: "early" }));
+      if (pathname === "/session/ses_early/message") return response.end(JSON.stringify([{ info: { id: "msg_user", sessionID: "ses_early", role: "user", time: { created: 1 } }, parts: [{ type: "text", text: "hello" }] }]));
+      if (pathname === "/session/status") return response.end(JSON.stringify({}));
+      return response.end(JSON.stringify([]));
+    }, async (baseURL) => {
+      await fetch(`${baseURL}/api/workbench/sessions/ses_early/events`, { headers: identityHeaders() }).then((response) => response.text());
+      const snapshot = await fetch(`${baseURL}/api/workbench/sessions/ses_early/snapshot`, { headers: identityHeaders() }).then((response) => response.json());
+      assert.deepEqual(snapshot.session.error, { code: "auth_unavailable", message: "provider authorization expired" });
+      assert.equal(snapshot.messages.some((message) => message.role === "assistant"), false);
+    }, { controlPlaneDatabasePath: path.join(directory, "control.sqlite") });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("subscribes to the session project directory and parses CRLF SSE frames", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-bff-project-events-"));
+  const workspace = path.join(directory, "workspace");
+  const project = path.join(workspace, "验收项目");
+  await mkdir(project, { recursive: true });
+  let eventDirectory = "";
+  try {
+    await withBff((request, response) => {
+      const incoming = new URL(request.url, "http://127.0.0.1");
+      response.setHeader("content-type", incoming.pathname === "/event" ? "text/event-stream" : "application/json");
+      if (incoming.pathname === "/event") {
+        eventDirectory = incoming.searchParams.get("directory") || "";
+        response.write(`data: {"type":"session.idle","properties":{"sessionID":"ses_project"}}\r\n\r\n`);
+        return;
+      }
+      if (incoming.pathname === "/session/ses_project") return response.end(JSON.stringify({ id: "ses_project", title: "project", directory: project }));
+      if (incoming.pathname === "/session/ses_project/message") return response.end(JSON.stringify([]));
+      if (incoming.pathname === "/session/status") return response.end(JSON.stringify({}));
+      return response.end(JSON.stringify([]));
+    }, async (baseURL) => {
+      const controller = new AbortController();
+      const response = await fetch(`${baseURL}/api/workbench/sessions/ses_project/events`, { headers: identityHeaders(), signal: controller.signal });
+      const reader = response.body.getReader();
+      let body = "";
+      while (!body.includes("session.idle")) body += new TextDecoder().decode((await reader.read()).value);
+      assert.equal(eventDirectory, await realpath(project));
+      assert.match(body, /event: ephemeral/);
+      controller.abort();
+    }, { users: [{ portalUserId: 3, username: "ryan", workspace }], controlPlaneDatabasePath: path.join(directory, "control.sqlite") });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("rejects a session directory that escapes the user workspace through a symlink", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "yeutech-bff-session-symlink-"));
+  const workspace = path.join(directory, "workspace");
+  const foreign = path.join(directory, "foreign");
+  const escape = path.join(workspace, "escape");
+  await mkdir(workspace);
+  await mkdir(foreign);
+  await symlink(foreign, escape);
+  try {
+    await withBff((request, response) => {
+      const pathname = new URL(request.url, "http://127.0.0.1").pathname;
+      response.setHeader("content-type", "application/json");
+      if (pathname === "/session/ses_escape") return response.end(JSON.stringify({ id: "ses_escape", directory: escape }));
+      response.end(JSON.stringify([]));
+    }, async (baseURL) => {
+      const response = await fetch(`${baseURL}/api/workbench/sessions/ses_escape/snapshot`, { headers: identityHeaders() });
+      assert.equal(response.status, 403);
+      assert.equal((await response.json()).error.code, "session_workspace_forbidden");
+    }, { users: [{ portalUserId: 3, username: "ryan", workspace }], controlPlaneDatabasePath: path.join(directory, "control.sqlite") });
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

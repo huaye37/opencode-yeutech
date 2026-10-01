@@ -60,6 +60,10 @@ export function buildOpenCodeConfig(models, options = {}) {
               input: Math.min(model.limit.input, Math.floor(model.limit.context * 0.8) + Math.min(20_000, model.limit.output)),
             },
             modalities: model.modalities,
+            ...(model.reasoningEfforts?.length ? {
+              reasoning: true,
+              variants: Object.fromEntries(model.reasoningEfforts.map(effort => [effort, { reasoningEffort: effort }])),
+            } : {}),
           }]),
         ),
       },

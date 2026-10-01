@@ -1,0 +1,87 @@
+{
+  "contractVersion": "yeutech-plugin-v1",
+  "generation": 1,
+  "plugins": [
+    {
+      "id": "yeutech.image-generation",
+      "displayName": "图像生成",
+      "description": "通过 YEUTECH 统一插件服务生成图像并返回可审计的产物引用。",
+      "kind": "tool",
+      "source": "platform-service",
+      "scope": "location",
+      "activation": { "defaultEnabled": true, "trigger": "location-open" },
+      "permissions": ["artifact.write", "network.egress", "model.invoke", "secret.use"],
+      "capabilities": ["image:generate", "artifact:read"],
+      "requires": [],
+      "consumers": ["agent-workbench", "novel-workbench", "deepseek-harness"],
+      "service": { "id": "yeutech-plugin-gateway", "protocol": "yeutech-plugin-http-v1" }
+    },
+    {
+      "id": "yeutech.document-ocr",
+      "displayName": "Mac mini OCR",
+      "description": "按需调用 Mac mini 识别图片文字、坐标和置信度；执行结束后不会保留后台进程。",
+      "kind": "tool",
+      "source": "platform-service",
+      "scope": "location",
+      "activation": { "defaultEnabled": true, "trigger": "location-open" },
+      "permissions": ["artifact.read", "project.read"],
+      "capabilities": ["document:ocr", "artifact:read"],
+      "requires": [],
+      "consumers": ["agent-workbench"],
+      "service": { "id": "yeutech-plugin-gateway", "protocol": "yeutech-plugin-http-v1" }
+    },
+    {
+      "id": "yeutech.media-inspect",
+      "displayName": "Mac mini 媒体分析",
+      "description": "按需调用 Mac mini 分析视频和音频编码、时长与流信息；执行结束后不会保留后台进程。",
+      "kind": "tool",
+      "source": "platform-service",
+      "scope": "location",
+      "activation": { "defaultEnabled": true, "trigger": "location-open" },
+      "permissions": ["artifact.read", "project.read"],
+      "capabilities": ["media:inspect", "artifact:read"],
+      "requires": [],
+      "consumers": ["agent-workbench"],
+      "service": { "id": "yeutech-plugin-gateway", "protocol": "yeutech-plugin-http-v1" }
+    },
+    {
+      "id": "yeutech.skill-catalog",
+      "displayName": "Skills 清单",
+      "description": "只读投影当前执行宿主已报告的 Skills，不安装或执行未知代码。",
+      "kind": "projection",
+      "source": "builtin",
+      "scope": "location",
+      "activation": { "defaultEnabled": true, "trigger": "location-open" },
+      "permissions": ["catalog.read"],
+      "capabilities": ["skills:list"],
+      "requires": [],
+      "consumers": ["agent-workbench", "deepseek-harness"]
+    },
+    {
+      "id": "yeutech.session-insight",
+      "displayName": "任务轨迹与证据",
+      "description": "投影会话轨迹、目标、上下文回执和交付证据，不改写权威会话日志。",
+      "kind": "projection",
+      "source": "builtin",
+      "scope": "session",
+      "activation": { "defaultEnabled": true, "trigger": "session-open" },
+      "permissions": ["session.read"],
+      "capabilities": ["session:trajectory", "session:goals", "session:evidence", "context:receipt"],
+      "requires": [],
+      "consumers": ["agent-workbench", "novel-workbench", "deepseek-harness"]
+    },
+    {
+      "id": "yeutech.replay-lab",
+      "displayName": "安全回放实验室",
+      "description": "在独立只读工作区重放选定任务，需要用户显式启用。",
+      "kind": "workflow",
+      "source": "builtin",
+      "scope": "session",
+      "activation": { "defaultEnabled": false, "trigger": "first-use" },
+      "permissions": ["session.read", "project.read", "model.invoke", "user.interaction"],
+      "capabilities": ["session:replay"],
+      "requires": ["yeutech.session-insight"],
+      "consumers": ["agent-workbench"]
+    }
+  ]
+}

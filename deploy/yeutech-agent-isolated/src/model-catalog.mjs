@@ -218,6 +218,7 @@ export function normalizeModelCatalog(payload) {
       disabledReason: disabledReason || null,
       limit: context && input && output ? { context, input, output } : null,
       modalities,
+      ...(entry.thinking?.levels?.length ? { reasoningEfforts: [...entry.thinking.levels] } : {}),
       ...(supportedWorkloads ? { supportedWorkloads } : {}),
     }];
   });

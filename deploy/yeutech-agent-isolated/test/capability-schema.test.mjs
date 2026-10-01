@@ -21,7 +21,7 @@ test("publishes a strict capability-v1 JSON Schema with the shared window rule",
   assert.deepEqual(Object.keys(capability.properties).sort(), [
     "available", "capability_status", "context_length", "created", "description", "display_name", "id",
     "max_input_tokens", "max_output_tokens", "object", "owned_by", "selectable", "supported_input_modalities",
-    "supported_output_modalities", "supported_parameters", "supports_web_search", "thinking", "type",
+    "supported_output_modalities", "supported_parameters", "supported_workloads", "supports_web_search", "thinking", "type", "unavailable_reason",
   ]);
   assert.equal(capability.properties.object.const, "model_capability");
   assert.equal(capability.properties.created.maximum, Number.MAX_SAFE_INTEGER);
@@ -30,6 +30,9 @@ test("publishes a strict capability-v1 JSON Schema with the shared window rule",
   assert.deepEqual(capability.required, ["id"]);
   assert.match(capability["x-yeutech-window-rule"], /min\(max_input_tokens, context_length - max_output_tokens\)/);
   assert.deepEqual(schema.$defs.modality.enum, ["text", "image", "audio", "video"]);
+  assert.deepEqual(schema.$defs.workload.enum, ["conversation", "agent", "review", "image_generation"]);
+  assert.equal(capability.properties.supported_workloads.$ref, "#/$defs/workloads");
+  assert.deepEqual(capability.properties.unavailable_reason.enum, ["auth_unavailable", "model_not_found", "credits_required", "cooldown"]);
   assert.ok(capability.allOf.some((rule) => rule.then?.required?.includes("max_output_tokens")));
 });
 

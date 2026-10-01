@@ -290,11 +290,11 @@ test("prepares a portal workspace without spawning its OpenCode worker", async (
     spawnProcess: () => { spawns += 1; throw new Error("prepare must not spawn"); },
   });
   try {
-    const worker = await supervisor.preparePortalWorker(73, "sleeping-user");
+    const worker = await supervisor.preparePortalWorker(73, "新用户73");
     assert.equal(worker.workspace, await realpath(workspace));
     assert.equal(spawns, 0);
     assert.deepEqual(supervisor.activeWorkerIds(), []);
-    assert.equal((await supervisor.describePortalWorker(73, "sleeping-user")).active, false);
+    assert.equal((await supervisor.describePortalWorker(73, "新用户73")).active, false);
   } finally { await supervisor.stop(); await rm(root, { recursive: true }); }
 });
 
@@ -345,6 +345,7 @@ test("lazily starts isolated workers once, evicts only idle workers, and restore
   const supervisor = createOpenCodeSupervisor({
     command: "opencode", username: "user", password: "password", runtimeRoot: root, projectsRoot, registryFile: path.join(root, "workers", "registry.json"), portStart: 18150, portEnd: 18160, idleEvictionMs: 1,
     systemWorker: system, modelCatalogURL: "http://catalog", modelCatalogToken: "token", fetchCatalog: async () => MODELS, spawnProcess,
+    pluginServiceToken: "plugin-master-secret-0123456789012345",
     fetch: async (url) => ({ ok: true, json: async () => String(url).includes("session/status") && busy ? { ses_busy: {} } : {} }), healthAttempts: 1, stopTimeoutMs: 1,
   });
   try {
@@ -353,6 +354,8 @@ test("lazily starts isolated workers once, evicts only idle workers, and restore
     assert.deepEqual(new Set(workers.map((worker) => worker.url)), new Set(["http://127.0.0.1:18150"]));
     assert.equal(workers[0].workspace, await realpath(path.join(projectsRoot, "users", "9")));
     assert.match(children[0].options.env.XDG_DATA_HOME, /workers\/user-9\/xdg\/data$/);
+    assert.match(children[0].options.env.YEUTECH_PLUGIN_SERVICE_TOKEN, /^v1\.9\./);
+    assert.notEqual(children[0].options.env.YEUTECH_PLUGIN_SERVICE_TOKEN, "plugin-master-secret-0123456789012345");
     busy = true;
     const observedAt = Date.now() + 10_000;
     await supervisor.evictIdleWorkers(observedAt);
@@ -369,6 +372,8 @@ test("lazily starts isolated workers once, evicts only idle workers, and restore
     const second = await supervisor.ensurePortalWorker(10, "other-user");
     assert.notEqual(second.root, restored.root);
     assert.notEqual(path.join(second.root, "xdg/data/opencode/opencode.db"), path.join(restored.root, "xdg/data/opencode/opencode.db"));
+    assert.match(children[2].options.env.YEUTECH_PLUGIN_SERVICE_TOKEN, /^v1\.10\./);
+    assert.notEqual(children[2].options.env.YEUTECH_PLUGIN_SERVICE_TOKEN, children[1].options.env.YEUTECH_PLUGIN_SERVICE_TOKEN);
   } finally { await supervisor.stop(); await rm(root, { recursive: true }); }
 });
 
