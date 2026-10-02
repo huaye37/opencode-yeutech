@@ -38,11 +38,15 @@ system_token_file="${YEUTECH_SYSTEM_SERVICE_TOKEN_FILE:-$runtime_root/secrets/sy
 [ -s "$system_token_file" ] || { umask 077; openssl rand -hex 32 > "$system_token_file"; }
 supervisor_token_file="${YEUTECH_SUPERVISOR_TOKEN_FILE:-$runtime_root/secrets/supervisor.token}"
 [ -s "$supervisor_token_file" ] || { umask 077; openssl rand -hex 32 > "$supervisor_token_file"; }
+plugin_token_file="${YEUTECH_PLUGIN_SERVICE_TOKEN_FILE:-$runtime_root/secrets/plugin-service.token}"
+[ -s "$plugin_token_file" ] || { umask 077; openssl rand -hex 32 > "$plugin_token_file"; }
 export OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-yeutech-agent}"
 export OPENCODE_SERVER_PASSWORD="$(tr -d '\r\n' < "$password_file")"
 export YEUTECH_AGENT_IDENTITY_SECRET="$(tr -d '\r\n' < "$identity_file")"
 export YEUTECH_SYSTEM_SERVICE_TOKEN="$(tr -d '\r\n' < "$system_token_file")"
 export YEUTECH_SUPERVISOR_TOKEN="$(tr -d '\r\n' < "$supervisor_token_file")"
+export YEUTECH_PLUGIN_SERVICE_TOKEN="$(tr -d '\r\n' < "$plugin_token_file")"
+export YEUTECH_PLUGIN_GATEWAY_URL="${YEUTECH_PLUGIN_GATEWAY_URL:-http://127.0.0.1:$bff_port}"
 export YEUTECH_CLI_PROXY_KEY="$(tr -d '\r\n' < "$key_file")"
 export YEUTECH_CREDENTIAL_GENERATION="$(printf '%s' "$YEUTECH_CLI_PROXY_KEY" | openssl dgst -sha256 | awk '{print substr($NF,1,16)}')"
 export YEUTECH_MODEL_ROUTE_ID="${YEUTECH_MODEL_ROUTE_ID:-nas-cliproxy-18319}"

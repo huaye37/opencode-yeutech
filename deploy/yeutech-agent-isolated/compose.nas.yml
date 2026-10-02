@@ -1,7 +1,7 @@
 services:
   yeutech-agent:
     container_name: yeutech-agent
-    image: yeutech-agent:20260914-final-v36
+    image: yeutech-agent:20260915-workbench-complete-v62
     build:
       context: .
       args:
@@ -20,6 +20,10 @@ services:
       YEUTECH_MIGRATION_USER_ID: "3"
       YEUTECH_MIGRATION_OWNER_DIRECTORY: ryan
       YEUTECH_CLI_PROXY_URL: http://127.0.0.1:18319
+      # Mount the containing directory below.  The API manager atomically replaces
+      # this JSON file, and a single-file bind mount would otherwise retain the
+      # previous inode until the Agent container is recreated.
+      YEUTECH_CONSUMER_MODEL_POLICY_FILE: /run/yeutech-policy/consumer-model-policy.json
       YEUTECH_SYSTEM_WORKER_PORT: "18133"
       YEUTECH_SUPERVISOR_PORT: "18141"
       YEUTECH_WORKER_PORT_START: "18150"
@@ -27,6 +31,9 @@ services:
       YEUTECH_WORKER_IDLE_EVICTION_MS: "1800000"
       YEUTECH_MODEL_REFRESH_CONCURRENCY: "1"
       OPENCODE_DISABLE_AUTOUPDATE: "true"
+      YEUTECH_MAC_CAPABILITY_SSH_HOST: lucian@192.168.100.216
+      YEUTECH_MAC_CAPABILITY_SSH_KEY: /run/secrets/mac-capability/id_ed25519
+      YEUTECH_MAC_CAPABILITY_KNOWN_HOSTS: /run/secrets/mac-capability/known_hosts
     volumes:
       - /volume1/docker/yeutech-agent/runtime:/runtime
       - /volume1/docker/yeutech-agent/data:/data:ro
@@ -37,6 +44,8 @@ services:
         bind:
           create_host_path: false
       - /volume1/docker/yeutech-api-manager/secrets/api.key:/run/secrets/cliproxy.key:ro
+      - /volume1/docker/yeutech-api-manager/data:/run/yeutech-policy:ro
+      - /volume1/docker/yeutech-agent/secrets/mac-capability:/run/secrets/mac-capability:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18140/health"]
       interval: 30s
