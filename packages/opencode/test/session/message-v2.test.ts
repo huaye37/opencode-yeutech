@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { createXai } from "@ai-sdk/xai"
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { APICallError, generateText } from "ai"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ProviderTransform } from "@/provider/transform"
@@ -410,6 +411,53 @@ describe("session.message-v2.toModelMessage", () => {
         ],
       },
     ])
+  })
+
+  test("preserves tool media and continuation on the YEUTECH compatible wire without xai filtering", async () => {
+    const compatibleModel: Provider.Model = {
+      ...model,
+      providerID: ProviderV2.ID.make("yeutech"),
+      api: { ...model.api, npm: "@ai-sdk/openai-compatible" },
+      capabilities: { ...model.capabilities, attachment: true, input: { ...model.capabilities.input, image: true } },
+    }
+    const userID = "m-compatible-user"
+    const assistantID = "m-compatible-assistant"
+    const input: SessionV1.WithParts[] = [
+      { info: userInfo(userID), parts: [{ ...basePart(userID, "u1"), type: "text", text: "read image" }] },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [{
+          ...basePart(assistantID, "a1"), type: "tool", callID: "call-compatible", tool: "read",
+          state: {
+            status: "completed", input: { filePath: "/tmp/image.gif" }, output: "image read", title: "Read",
+            metadata: {}, time: { start: 0, end: 1 },
+            attachments: [
+              { ...basePart(assistantID, "f1"), type: "file", mime: "image/png", filename: "image.png", url: "data:image/png;base64,Zm9v" },
+              { ...basePart(assistantID, "f2"), type: "file", mime: "image/gif", filename: "image.gif", url: "data:image/gif;base64,R0lGODlh" },
+            ],
+          },
+        }],
+      },
+    ]
+    const bodies: Record<string, unknown>[] = []
+    const compatible = createOpenAICompatible({
+      name: "yeutech", baseURL: "https://example.invalid/v1", apiKey: "test",
+      fetch: Object.assign(async (url: RequestInfo | URL, init?: RequestInit) => {
+        bodies.push(await new Request(url, init).json())
+        return new Response("{}", { status: 400 })
+      }, { preconnect: globalThis.fetch.preconnect }),
+    })
+    await generateText({
+      model: compatible.chatModel(compatibleModel.api.id),
+      messages: ProviderTransform.message(await MessageV2.toModelMessages(input, compatibleModel), compatibleModel, {}),
+      maxRetries: 0,
+    }).catch(() => undefined)
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0].messages).toContainEqual({ role: "tool", tool_call_id: "call-compatible", content: "image read" })
+    const messages = bodies[0].messages as { role: string; content: unknown }[]
+    expect(messages.at(-1)?.role).toBe("user")
+    expect(messages.at(-1)?.content).toContainEqual({ type: "image_url", image_url: { url: "data:image/png;base64,Zm9v" } })
+    expect(messages.at(-1)?.content).toContainEqual({ type: "image_url", image_url: { url: "data:image/gif;base64,R0lGODlh" } })
   })
 
   test("preserves jpeg tool-result media for anthropic models", async () => {

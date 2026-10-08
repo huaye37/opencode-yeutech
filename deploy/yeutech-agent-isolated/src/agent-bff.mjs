@@ -287,6 +287,11 @@ async function serveStatic(response, webRoot, pathname) {
 }
 
 export function createAgentBff(options) {
+  let activePluginRuns = 0;
+  async function withPluginActivity(run) {
+    activePluginRuns += 1;
+    try { return await run(); } finally { activePluginRuns -= 1; }
+  }
   if (typeof options.identitySecret !== "string" || options.identitySecret.length < 32) throw new Error("Portal identity secret must contain at least 32 characters");
   const users = new Map((options.users ?? []).map((user) => {
     const portalUserId = Number(user.portalUserId);
@@ -1096,7 +1101,7 @@ export function createAgentBff(options) {
     const incoming = new URL(request.url ?? "/", "http://127.0.0.1");
     if (request.method === "GET" && incoming.pathname === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: true, workerMode: options.ensureWorker ? "dynamic" : "static-test", components: { pluginRuntime: imagePlugin ? "ready" : "disabled", macCapabilityRuntime: macCapabilityPlugin?.ready ? "ready" : "unavailable", projectionStore: projectionStore ? "ready" : "disabled" } }));
+      response.end(JSON.stringify({ ok: true, activePluginRuns, workerMode: options.ensureWorker ? "dynamic" : "static-test", components: { pluginRuntime: imagePlugin ? "ready" : "disabled", macCapabilityRuntime: macCapabilityPlugin?.ready ? "ready" : "unavailable", projectionStore: projectionStore ? "ready" : "disabled" } }));
       return;
     }
     try {
@@ -1126,7 +1131,7 @@ export function createAgentBff(options) {
           const abort = () => controller.abort(new DOMException("Plugin caller disconnected", "AbortError"));
           request.once("aborted", abort);
           response.once("close", () => { if (!response.writableEnded) abort(); });
-          const artifact = await imagePlugin.generateAgent({ ...payload, portalUserId, signal: controller.signal });
+          const artifact = await withPluginActivity(() => imagePlugin.generateAgent({ ...payload, portalUserId, signal: controller.signal }));
           response.writeHead(201, { "content-type": "application/json", "cache-control": "no-store" });
           response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: artifact }));
           return;
@@ -1135,11 +1140,12 @@ export function createAgentBff(options) {
           const portalUserId = pluginWorkerUser(request.headers.authorization);
           if (!portalUserId) throw portalError("Worker plugin authorization is required", { statusCode: 401, code: "plugin_authorization_required", retryable: false, scope: "identity" });
           if (!macCapabilityPlugin?.ready) throw portalError("Mac capability runtime is unavailable", { statusCode: 503, code: "mac_runtime_unavailable", retryable: true, scope: "plugin" });
+          if ((await proxyMaintenanceStatus(options.proxyMaintenanceURL)).updating === true) throw portalError("AI 工作台正在更新，请稍后重试", { statusCode: 503, code: "workbench_updating", retryable: true, scope: "plugin", recoveryAction: "retry" });
           const payload = JSON.parse((await readBody(request, Math.min(bodyLimit, 64 * 1024))).toString("utf8") || "{}");
           const controller = new AbortController();
           const abort = () => controller.abort(new DOMException("Plugin caller disconnected", "AbortError"));
           request.once("aborted", abort); response.once("close", () => { if (!response.writableEnded) abort(); });
-          const run = await macCapabilityPlugin.run({ ...payload, portalUserId, signal: controller.signal, controller });
+          const run = await withPluginActivity(() => macCapabilityPlugin.run({ ...payload, portalUserId, signal: controller.signal, controller }));
           response.writeHead(run.status === "completed" ? 201 : 502, { "content-type": "application/json", "cache-control": "no-store" });
           response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: run })); return;
         }
@@ -1159,7 +1165,7 @@ export function createAgentBff(options) {
           const abort = () => controller.abort(new DOMException("Plugin caller disconnected", "AbortError"));
           request.once("aborted", abort);
           response.once("close", () => { if (!response.writableEnded) abort(); });
-          const artifact = await imagePlugin.generateBusiness({ ...payload, signal: controller.signal });
+          const artifact = await withPluginActivity(() => imagePlugin.generateBusiness({ ...payload, signal: controller.signal }));
           response.writeHead(201, { "content-type": "application/json", "cache-control": "no-store" });
           response.end(JSON.stringify({ contractVersion: "yeutech-plugin-http-v1", data: artifact }));
           return;
@@ -1174,6 +1180,13 @@ export function createAgentBff(options) {
         if (!systemAuthorized(request.headers.authorization)) {
           respondError(response, portalError("System service authorization is required", { statusCode: 401, code: "system_authorization_required", retryable: false, scope: "identity" }));
           return;
+        }
+        if (request.method === "POST" && (incoming.pathname === "/api/system/tasks" || /^\/api\/system\/tasks\/task_[a-f0-9]{32}\/resume$/.test(incoming.pathname))) {
+          if ((await proxyMaintenanceStatus(options.proxyMaintenanceURL)).updating === true) {
+            throw portalError("AI 工作台正在更新，请稍后在原会话重试", {
+              statusCode: 503, code: "workbench_updating", retryable: true, scope: "system-task", recoveryAction: "retry",
+            });
+          }
         }
         if (request.method === "POST" && incoming.pathname === "/api/system/tasks") {
           const payload = JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}");
@@ -1628,6 +1641,11 @@ export function createAgentBff(options) {
         return;
       }
       if (incoming.pathname === "/api/workbench/replays/execute" && request.method === "POST") {
+        if ((await proxyMaintenanceStatus(options.proxyMaintenanceURL)).updating === true) {
+          throw portalError("AI 工作台正在更新，请稍后在原会话重试", {
+            statusCode: 503, code: "workbench_updating", retryable: true, scope: "replay", recoveryAction: "retry",
+          });
+        }
         if (!replayStore) throw portalError("Replay store is not configured", { statusCode: 503, code: "replay_store_unavailable", retryable: true, scope: "replay" });
         const payload = JSON.parse((await readBody(request, bodyLimit)).toString("utf8") || "{}");
         const sourceSessionId = String(payload.sessionId || "");

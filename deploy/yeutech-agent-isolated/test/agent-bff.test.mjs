@@ -172,6 +172,38 @@ test("rejects new prompts with a clear retryable error during proxy maintenance"
   } finally { await close(maintenance); }
 });
 
+test("blocks system submission, resume and replay during non-forced OpenCode maintenance", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-opencode-maintenance-"));
+  const systemToken = "system-maintenance-token-0123456789";
+  let updating = true;
+  const maintenance = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ updating, recentInterrupted: false, scope: "opencode" })));
+  const maintenanceURL = await listen(maintenance);
+  let upstreamHits = 0;
+  const taskPath = "/api/system/tasks/task_" + "a".repeat(32);
+  const systemHeaders = { authorization: `Bearer ${systemToken}`, "content-type": "application/json" };
+  try {
+    await withBff(() => { upstreamHits += 1; }, async (baseURL) => {
+      for (const route of ["/api/system/tasks", `${taskPath}/resume`]) {
+        const response = await fetch(baseURL + route, { method: "POST", headers: systemHeaders, body: "{}" });
+        assert.equal(response.status, 503);
+        assert.deepEqual((await response.json()).error, {
+          code: "workbench_updating", message: "AI 工作台正在更新，请稍后在原会话重试",
+          retryable: true, scope: "system-task", recoveryAction: "retry",
+        });
+      }
+      assert.equal((await fetch(baseURL + taskPath, { headers: systemHeaders })).status, 404);
+      assert.equal((await fetch(baseURL + taskPath + "/stop", { method: "POST", headers: systemHeaders })).status, 404);
+      const replay = await fetch(baseURL + "/api/workbench/replays/execute", { method: "POST", headers: { ...identityHeaders(), "content-type": "application/json" }, body: "{}" });
+      assert.equal(replay.status, 503);
+      assert.equal((await replay.json()).error.code, "workbench_updating");
+      assert.equal((await fetch(baseURL + "/api/workbench/replays", { method: "POST", headers: { ...identityHeaders(), "content-type": "application/json" }, body: "{}" })).status, 200);
+      updating = false;
+      assert.equal((await fetch(baseURL + taskPath + "/resume", { method: "POST", headers: systemHeaders, body: "{}" })).status, 404);
+      assert.equal(upstreamHits, 0);
+    }, { proxyMaintenanceURL: maintenanceURL, systemToken, systemDatabasePath: path.join(root, "tasks.sqlite"), systemWorkspace: "/projects/system/kaoyan" });
+  } finally { await close(maintenance); await rm(root, { recursive: true, force: true }); }
+});
+
 test("rejects new image jobs during proxy maintenance without calling the generator", async () => {
   const secret = "plugin-maintenance-secret-01234567";
   const workerToken = `v1.3.${createHmac("sha256", secret).update("portal:3").digest("base64url")}`;
@@ -189,12 +221,37 @@ test("rejects new image jobs during proxy maintenance without calling the genera
         assert.equal((await response.json()).error.code, "workbench_updating");
       }
       assert.equal(generated, 0);
+      const mac = await fetch(`${baseURL}/api/plugins/v1/mac-capabilities/agent-runs`, {
+        method: "POST", headers: { authorization: `Bearer ${workerToken}`, "content-type": "application/json" }, body: "{}",
+      });
+      assert.equal(mac.status, 503);
+      assert.equal((await mac.json()).error.code, "workbench_updating");
+      assert.equal(generated, 0);
     }, {
       proxyMaintenanceURL: maintenanceURL,
       pluginServiceToken: secret,
       imagePluginService: { listModels: async () => [], generateAgent: async () => { generated++; }, generateBusiness: async () => { generated++; } },
+      macCapabilityPluginService: { ready: true, run: async () => { generated++; } },
     });
   } finally { await close(maintenance); }
+});
+
+test("reports a pending independent image job until its provider promise settles", async () => {
+  const secret = "plugin-count-token-012345678901234567";
+  let started;
+  const ready = new Promise(resolve => { started = resolve; });
+  let finish;
+  const blocked = new Promise(resolve => { finish = resolve; });
+  await withBff(() => {}, async baseURL => {
+    const job = fetch(baseURL + "/api/plugins/v1/image-generation/business-runs", {
+      method: "POST", headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" }, body: "{}",
+    });
+    await ready;
+    assert.equal((await fetch(baseURL + "/health").then(r => r.json())).activePluginRuns, 1);
+    finish();
+    assert.equal((await job).status, 201);
+    assert.equal((await fetch(baseURL + "/health").then(r => r.json())).activePluginRuns, 0);
+  }, { pluginServiceToken: secret, imagePluginService: { generateBusiness: async () => { started(); await blocked; return { id: "artifact-test" }; } } });
 });
 
 test("loads the passive workbench and migration history without starting a portal worker", async () => {
