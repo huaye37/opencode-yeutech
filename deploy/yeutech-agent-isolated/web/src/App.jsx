@@ -963,10 +963,17 @@ function Conversation({ session, project, messages, permissions, insight, hasRun
     submittedDraftRef.current = value;
     suppressSubmittedInputUntilRef.current = performance.now() + 300;
     setDraft("");
-    window.requestAnimationFrame(() => setDraft(""));
+    const clearFrame = window.requestAnimationFrame(() => {
+      if (submittedDraftRef.current === value) setDraft((current) => current.trim() === value ? "" : current);
+    });
     nearMessageBottomRef.current = true;
-    const sent = await onSend(value, attachments);
-    if (sent) setUploads([]);
+    const result = await onSend(value, attachments);
+    window.cancelAnimationFrame(clearFrame);
+    if (result.sent) setUploads([]);
+    else if (renderedSessionRef.current === result.sessionID && submittedDraftRef.current === value) {
+      suppressSubmittedInputUntilRef.current = 0;
+      setDraft((current) => current || value);
+    }
   };
   const enqueueUploads = (fileList) => {
     const files = [...(fileList || [])];
@@ -1690,10 +1697,11 @@ export function App() {
     if (nextProjectID) setExpandedProjects((current) => new Set([...current, nextProjectID]));
   };
   const send = async (text, selectedAttachments = []) => {
-    if (!session) return false;
+    if (!session) return { sent: false, sessionID: selected };
     const currentPoll = pollVersion.current + 1;
     pollVersion.current = currentPoll;
     const localID = selected;
+    let runtimeDisplayID = localID;
     const historical = isHistoricalConversation(localID);
     const title = (text.trim() || selectedAttachments[0]?.name || selectedAttachments[0]?.path || "新会话").slice(0, 28);
     const message = {
@@ -1710,7 +1718,6 @@ export function App() {
     setMessagesBySession((current) => ({ ...current, [localID]: [...(current[localID] || []), message] })); setRunning(true); updateRunningSession(localID, true); setStatus(historical && !runtimeSessions[localID] ? "正在后台接续原会话…" : "正在通过 CLIProxyAPI 调用模型…");
     try {
       let remoteID = runtimeSessions[localID];
-      let runtimeDisplayID = localID;
       if (historical && !remoteID) {
         const result = await migrationApi.continue(localID);
         remoteID = result.session.id;
@@ -1738,15 +1745,15 @@ export function App() {
       const sentIdentities = new Set(selectedAttachments.map(attachmentFileIdentity));
       const sentOwnerIDs = new Set([localID, runtimeDisplayID]);
       setAttachments((current) => current.filter((item) => !sentOwnerIDs.has(item.ownerSessionID) || !sentIdentities.has(attachmentFileIdentity(item))));
-      return true;
+      return { sent: true, sessionID: runtimeDisplayID };
     } catch (error) {
       if (pollVersion.current === currentPoll) {
         const failureMessage = error instanceof Error ? error.message : "请求失败";
         const failure = { id: `send-error-${Date.now()}`, role: "assistant", text: "", error: { code: error?.code || "submit_failed", message: `消息未能提交给模型：${failureMessage}` }, createdAt: Date.now(), origin: "local-error" };
-        setMessagesBySession((current) => ({ ...current, [localID]: [...(current[localID] || []), failure] }));
-        setRunning(false); updateRunningSession(localID, false); setStatus(failure.error.message);
+        setMessagesBySession((current) => ({ ...current, [runtimeDisplayID]: [...(current[runtimeDisplayID] || []), failure] }));
+        setRunning(false); updateRunningSession(runtimeDisplayID, false); setStatus(failure.error.message);
       }
-      return false;
+      return { sent: false, sessionID: runtimeDisplayID };
     }
   };
   const stop = async () => {
