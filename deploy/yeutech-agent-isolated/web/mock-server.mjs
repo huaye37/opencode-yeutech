@@ -1,7 +1,7 @@
 import http from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 
-const sessions = [{ id: "ses_mock_history", title: "长会话性能验证", model: { modelID: "claude-haiku-4-5-20251001" } }];
+const sessions = [{ id: "ses_mock_history", title: "长会话性能验证", model: { modelID: "gpt-6.1-sol" } }];
 const messageCount = Number(process.env.YEUTECH_MOCK_MESSAGE_COUNT ?? 2);
 const messages = Array.from({ length: messageCount }, (_, index) => ({
   info: {
@@ -17,6 +17,7 @@ const eventClients = new Set();
 const projectionClients = new Set();
 const goals = [];
 const mockUploads = [];
+const sessionPreferences = { ses_mock_history: { modelId: "gpt-6.1-sol", reasoningEffort: "max", serviceTier: "priority" } };
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -118,10 +119,11 @@ const server = http.createServer(async (request, response) => {
       states: sessionState ? { ses_mock_history: sessionState } : {},
       permissions,
       models: [
-        { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", selectable: true, limit: { context: 200000 } },
+        { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", selectable: true, reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"], serviceTiers: ["priority", "ultrafast"], limit: { context: 500000 } },
         { id: "new-model-preview", name: "New model preview", selectable: false, disabledReason: "能力信息待补全" },
       ],
-      defaultModel: { id: "claude-haiku-4-5-20251001" },
+      defaultModel: { id: "gpt-6.1-sol" },
+      sessionPreferences,
       reload: { status: "ready" },
     }));
     return;
@@ -204,6 +206,12 @@ const server = http.createServer(async (request, response) => {
     response.end(JSON.stringify(snapshot(decodeURIComponent(snapshotRoute[1]))));
     return;
   }
+  const passiveMessagesRoute = incoming.pathname.match(/^\/api\/workbench\/sessions\/([^/]+)\/messages$/);
+  if (request.method === "GET" && passiveMessagesRoute) {
+    const sessionID = decodeURIComponent(passiveMessagesRoute[1]);
+    response.end(JSON.stringify({ ...snapshot(sessionID), records: projectedMessages(), inbox: [], cursor: null }));
+    return;
+  }
   const toolResultRoute = incoming.pathname.match(/^\/api\/workbench\/sessions\/([^/]+)\/tool-results\/([^/]+)\/([^/]+)$/);
   if (request.method === "GET" && toolResultRoute) {
     response.end(JSON.stringify({ contractVersion: "mock-2026-09-13", data: { value: `Mock tool result for ${decodeURIComponent(toolResultRoute[2])}/${decodeURIComponent(toolResultRoute[3])}` } }));
@@ -252,9 +260,21 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.method === "GET" && incoming.pathname === "/api/models") {
     response.end(JSON.stringify({ data: [
-      { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", selectable: true, disabledReason: null, limit: { context: 200000, input: 180000, output: 20000 } },
+      { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", selectable: true, disabledReason: null, reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"], serviceTiers: ["priority", "ultrafast"], limit: { context: 500000, input: 420000, output: 128000 } },
       { id: "new-model-preview", name: "New model preview", selectable: false, disabledReason: "能力信息待补全", limit: null },
     ] }));
+    return;
+  }
+  const sessionPreferenceRoute = incoming.pathname.match(/^\/api\/workbench\/session-preferences\/([^/]+)$/);
+  if (request.method === "PATCH" && sessionPreferenceRoute) {
+    const sessionID = decodeURIComponent(sessionPreferenceRoute[1]);
+    const body = await readJson(request);
+    sessionPreferences[sessionID] = {
+      modelId: String(body.modelId || ""),
+      reasoningEffort: String(body.reasoningEffort || ""),
+      serviceTier: String(body.serviceTier || ""),
+    };
+    response.end(JSON.stringify({ contractVersion: "mock-2026-10-09", data: sessionPreferences[sessionID] }));
     return;
   }
   if (request.method === "GET" && incoming.pathname === "/session") {

@@ -86,6 +86,7 @@ export const agentApi = {
         paths: attachments.map((item) => item.path).filter(Boolean),
         permissionMode: context.permissionMode || "smart",
         reasoningEffort: context.reasoningEffort || "",
+        serviceTier: context.serviceTier || "",
       },
       tools: {},
       parts: [{
@@ -168,7 +169,7 @@ export const workbenchApi = {
   removeProject: (projectID) => workbenchRequest(`/projects/${encodeURIComponent(projectID)}`, { method: "DELETE" }),
   createProjectSession: (project, title = "新会话") => workbenchRequest("/project-sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project, title }) }),
   renameSession: (sessionID, title) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }) }),
-  updateSessionPreference: (sessionID, modelId, reasoningEffort = "") => workbenchRequest(`/session-preferences/${encodeURIComponent(sessionID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId, reasoningEffort }) }),
+  updateSessionPreference: (sessionID, modelId, reasoningEffort = "", serviceTier = "") => workbenchRequest(`/session-preferences/${encodeURIComponent(sessionID)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId, reasoningEffort, serviceTier }) }),
   updateSessionPermission: (sessionID, permissionMode) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}/permission-mode`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ permissionMode }) }),
   deleteSession: (sessionID) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}`, { method: "DELETE" }),
   forkSession: (sessionID, messageId) => workbenchRequest(`/sessions/${encodeURIComponent(sessionID)}/fork`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(messageId ? { messageId } : {}) }),

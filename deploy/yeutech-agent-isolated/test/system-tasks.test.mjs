@@ -29,6 +29,7 @@ test("persists idempotent kaoyan tasks in one system session with SSE, stop, and
   let sessions = 0;
   let assistantText = "feedback";
   let deferAssistant = false;
+  const promptBodies = [];
   const messages = new Map();
   const deferred = new Map();
   const upstream = http.createServer(async (request, response) => {
@@ -46,6 +47,7 @@ test("persists idempotent kaoyan tasks in one system session with SSE, stop, and
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      promptBodies.push(body);
       const current = messages.get(sessionID) ?? [];
       current.push({ info: { id: body.messageID, role: "user" }, parts: body.parts });
       const assistant = { info: { id: `msg_assistant_${prompts}`, role: "assistant", parentID: body.messageID, time: { completed: 1 } }, parts: [{ type: "text", text: assistantText }] };
@@ -81,7 +83,7 @@ test("persists idempotent kaoyan tasks in one system session with SSE, stop, and
   });
   const catalog = http.createServer((_request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
-    response.end('{"data":[{"id":"ready-model","context_length":128000,"max_input_tokens":120000,"max_output_tokens":8000,"supported_input_modalities":["text"],"supported_output_modalities":["text"]},{"id":"new-model","context_length":0,"max_output_tokens":0,"selectable":false,"capability_status":"incomplete"}]}');
+    response.end('{"data":[{"id":"ready-model","context_length":128000,"max_input_tokens":120000,"max_output_tokens":8000,"supported_input_modalities":["text"],"supported_output_modalities":["text"],"thinking":{"levels":["high","ultra"]},"service_tiers":[{"id":"priority"},{"id":"ultrafast"}]},{"id":"new-model","context_length":0,"max_output_tokens":0,"selectable":false,"capability_status":"incomplete"}]}');
   });
   const upstreamURL = await listen(upstream);
   const modelCatalogURL = await listen(catalog);
@@ -109,7 +111,7 @@ test("persists idempotent kaoyan tasks in one system session with SSE, stop, and
       { id: "new-model", selectable: false, disabledReason: "能力信息待补全" },
       { id: "ready-model", selectable: true, disabledReason: null },
     ]);
-    const payload = { sessionKey: "grading:user-3", kind: "grading", modelId: "ready-model", prompt: "grade this", idempotencyKey: "submission-42" };
+    const payload = { sessionKey: "grading:user-3", kind: "grading", modelId: "ready-model", reasoningEffort: "ultra", serviceTier: "ultrafast", prompt: "grade this", idempotencyKey: "submission-42" };
     const created = await Promise.all(Array.from({ length: 8 }, () => fetch(`${baseURL}/api/system/tasks`, { method: "POST", headers, body: JSON.stringify(payload) })));
     assert.deepEqual(created.map((response) => response.status), Array(8).fill(202));
     const createdTasks = await Promise.all(created.map((response) => response.json()));
@@ -121,6 +123,9 @@ test("persists idempotent kaoyan tasks in one system session with SSE, stop, and
 
     assert.equal(sessions, 1);
     assert.equal(prompts, 1);
+    assert.equal(task.reasoningEffort, "ultra");
+    assert.equal(task.serviceTier, "ultrafast");
+    assert.equal(promptBodies[0].variant, "ultra--service-ultrafast");
 
     const result = await fetch(`${baseURL}/api/system/tasks/${task.id}`, { headers }).then((response) => response.json());
     assert.equal(result.status, "completed");

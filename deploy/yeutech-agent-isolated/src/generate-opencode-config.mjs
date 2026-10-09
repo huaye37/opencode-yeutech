@@ -60,9 +60,15 @@ export function buildOpenCodeConfig(models, options = {}) {
               input: Math.min(model.limit.input, Math.floor(model.limit.context * 0.8) + Math.min(20_000, model.limit.output)),
             },
             modalities: model.modalities,
-            ...(model.reasoningEfforts?.length ? {
-              reasoning: true,
-              variants: Object.fromEntries(model.reasoningEfforts.map(effort => [effort, { reasoningEffort: effort }])),
+            ...(model.reasoningEfforts?.length ? { reasoning: true } : {}),
+            ...((model.reasoningEfforts?.length || model.serviceTiers?.length) ? {
+              variants: Object.fromEntries([
+                ...(model.reasoningEfforts || []).map((effort) => [effort, { reasoningEffort: effort }]),
+                ...(model.serviceTiers || []).flatMap((tier) => [
+                  [`service-${tier}`, { service_tier: tier }],
+                  ...(model.reasoningEfforts || []).map((effort) => [`${effort}--service-${tier}`, { reasoningEffort: effort, service_tier: tier }]),
+                ]),
+              ]),
             } : {}),
           }]),
         ),

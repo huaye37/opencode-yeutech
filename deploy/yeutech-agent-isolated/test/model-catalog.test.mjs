@@ -62,10 +62,19 @@ test("builds interactive OpenCode provider config", () => {
 });
 
 test("declared reasoning levels become exact OpenCode variants", () => {
-  const models = normalizeModelCatalog({ data: [{ id: "reasoning-model", context_length: 500000, max_output_tokens: 8000, supported_input_modalities: ["text"], supported_output_modalities: ["text"], thinking: { levels: ["low", "high"] } }] });
+  const models = normalizeModelCatalog({ data: [{ id: "reasoning-model", context_length: 500000, max_output_tokens: 8000, supported_input_modalities: ["text"], supported_output_modalities: ["text"], thinking: { levels: ["low", "high"] }, service_tiers: [{ id: "priority" }, { id: "ultrafast" }] }] });
   assert.deepEqual(models[0].reasoningEfforts, ["low", "high"]);
+  assert.deepEqual(models[0].serviceTiers, ["priority", "ultrafast"]);
   const config = buildOpenCodeConfig(models);
-  assert.deepEqual(config.provider.yeutech.models["reasoning-model"].variants, { low: { reasoningEffort: "low" }, high: { reasoningEffort: "high" } });
+  assert.deepEqual(config.provider.yeutech.models["reasoning-model"].variants, {
+    low: { reasoningEffort: "low" }, high: { reasoningEffort: "high" },
+    "service-priority": { service_tier: "priority" },
+    "low--service-priority": { reasoningEffort: "low", service_tier: "priority" },
+    "high--service-priority": { reasoningEffort: "high", service_tier: "priority" },
+    "service-ultrafast": { service_tier: "ultrafast" },
+    "low--service-ultrafast": { reasoningEffort: "low", service_tier: "ultrafast" },
+    "high--service-ultrafast": { reasoningEffort: "high", service_tier: "ultrafast" },
+  });
 });
 
 test("sets GPT and Gemini effective compaction budgets to 80%", () => {
