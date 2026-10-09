@@ -15,12 +15,14 @@ test("persists permission mode per user and session", async () => {
     store.set(3, "ses_one", "full");
     store.setModel(3, "ses_one", "gemini-3-flash");
     store.setReasoning(3, "ses_one", "high");
+    store.setServiceTier(3, "ses_one", "ultrafast");
     store.set(4, "ses_one", "ask");
     store.close();
     store = createSessionPolicyStore(file);
     assert.equal(store.get(3, "ses_one"), "full");
     assert.equal(store.getModel(3, "ses_one"), "gemini-3-flash");
     assert.equal(store.getReasoning(3, "ses_one"), "high");
+    assert.equal(store.getServiceTier(3, "ses_one"), "ultrafast");
     assert.equal(store.get(4, "ses_one"), "ask");
     assert.equal(store.get(3, "ses_two"), "smart");
     assert.deepEqual(store.list(3).map(({ sessionId, permissionMode, modelId }) => ({ sessionId, permissionMode, modelId })), [

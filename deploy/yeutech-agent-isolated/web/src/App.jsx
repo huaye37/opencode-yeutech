@@ -843,7 +843,7 @@ function DiffPanel({ open, loading, error, items, session, onClose, onRetry }) {
   }) : <div className="discovery-empty"><Icon name="check" /><b>当前会话没有文件变更</b><p>Worker 尚未记录可审阅的 Diff。</p></div>}</div></section></div>;
 }
 
-function Conversation({ session, project, messages, permissions, insight, hasRuntime, attachments, olderCursor, loadingOlder, models, model, permissionMode, reasoningEffort, onReasoningEffortChange, running, stopping, status, bootstrapping, bootstrapError, focusMode, sidebarCollapsed, onLoadOlder, onModelChange, onPermissionModeChange, onSend, onStop, onAttach, onRemoveAttachment, onOpenControl, onOpenCapabilities, onPanoramaOpen, onPermissionReply, onExport, onOpenFiles, onOpenDiff, onOpenSidebar, onExpandSidebar, onToggleFocus }) {
+function Conversation({ session, project, messages, permissions, insight, hasRuntime, attachments, olderCursor, loadingOlder, models, model, permissionMode, reasoningEffort, serviceTier, onReasoningEffortChange, onServiceTierChange, running, stopping, status, bootstrapping, bootstrapError, focusMode, sidebarCollapsed, onLoadOlder, onModelChange, onPermissionModeChange, onSend, onStop, onAttach, onRemoveAttachment, onOpenControl, onOpenCapabilities, onPanoramaOpen, onPermissionReply, onExport, onOpenFiles, onOpenDiff, onOpenSidebar, onExpandSidebar, onToggleFocus }) {
   const projectName = project?.name;
   const projectNames = [project?.workspaceDirectory, project?.name].filter(Boolean);
   const fileSpace = fileSpaceFor(session, project);
@@ -1074,7 +1074,8 @@ function Conversation({ session, project, messages, permissions, insight, hasRun
           <button className="add-file-button" aria-label="添加文件" title={projectName ? "上传到当前项目" : "上传到本独立会话的受控附件目录"} onClick={() => uploadRef.current?.click()}><Icon name="plus" /><span>添加文件</span></button>
           <span className="attachment-label"><Icon name="paperclip" size={14} />{attachments.length ? `${attachments.length} 个附件` : projectName ? "当前项目" : "独立会话文件夹"}</span>
           <select aria-label="当前会话模型" value={model} onChange={(event) => onModelChange(event.target.value)}>{models.length ? models.map((item) => <option value={item.id} key={item.id} disabled={!item.selectable}>{item.name}{item.selectable ? "" : ` · ${item.disabledReason || "暂不可用"}`}</option>) : <option value="">正在读取模型…</option>}</select>
-          <select aria-label="推理强度" value={reasoningEffort} disabled={!models.find(item => item.id === model)?.reasoningEfforts?.length} onChange={event => onReasoningEffortChange(event.target.value)}><option value="">模型默认</option>{(models.find(item => item.id === model)?.reasoningEfforts || []).map(level => <option key={level} value={level}>{({minimal:"最少",low:"低",medium:"中",high:"高",xhigh:"超高",max:"最大"})[level] || level}</option>)}</select>
+          <select aria-label="推理强度" value={reasoningEffort} disabled={!models.find(item => item.id === model)?.reasoningEfforts?.length} onChange={event => onReasoningEffortChange(event.target.value)}><option value="">模型默认</option>{(models.find(item => item.id === model)?.reasoningEfforts || []).map(level => <option key={level} value={level}>{({minimal:"最少",low:"低",medium:"中",high:"高",xhigh:"超高",max:"最大",ultra:"极高"})[level] || level}</option>)}</select>
+          <select aria-label="响应速度" value={serviceTier} disabled={!models.find(item => item.id === model)?.serviceTiers?.length} onChange={event => onServiceTierChange(event.target.value)}><option value="">标准</option>{(models.find(item => item.id === model)?.serviceTiers || []).map(tier => <option key={tier} value={tier}>{tier === "ultrafast" ? "Ultrafast" : "Fast"}</option>)}</select>
           <select aria-label="权限模式" value={permissionMode} onChange={(event) => onPermissionModeChange(event.target.value)} title="控制 Agent 在当前用户工作区内的操作审批"><option value="ask">请求批准</option><option value="smart">帮我批准</option><option value="full">完全访问</option></select>
           <div className="composer-spacer" />
           {selectedCapability && !selectedCapability.selectable ? <span className="model-warning" title={selectedCapability.disabledReason}>能力待补全</span> : null}
@@ -1110,6 +1111,7 @@ export function App() {
   const [models, setModels] = useState([]);
   const [model, setModel] = useState("");
   const [reasoningPreferences, setReasoningPreferences] = useState({});
+  const [serviceTierPreferences, setServiceTierPreferences] = useState({});
   const [permissionMode, setPermissionMode] = useState(() => {
     try { const value = window.localStorage.getItem(PERMISSION_MODE_STORAGE_KEY); return ["ask", "smart", "full"].includes(value) ? value : "smart"; }
     catch { return "smart"; }
@@ -1260,6 +1262,7 @@ export function App() {
       setModelReload(bootstrap.reload || { status: "unknown" });
       setModel((current) => selectable.some((item) => item.id === current) ? current : bootstrap.defaultModel?.id || selectable[0]?.id || "");
       setReasoningPreferences(Object.fromEntries(Object.entries(bootstrap.sessionPreferences || {}).map(([id, value]) => [id, value.reasoningEffort || ""])));
+      setServiceTierPreferences(Object.fromEntries(Object.entries(bootstrap.sessionPreferences || {}).map(([id, value]) => [id, value.serviceTier || ""])));
       const runtimeSession = (item) => ({ id: item.id, ...(item.projectId ? { projectId: item.projectId } : {}), title: item.title || "新会话", model: bootstrap.sessionPreferences?.[item.id]?.modelId || item.model?.modelID || item.model?.id || bootstrap.defaultModel?.id || selectable[0]?.id, updatedAt: Number(item.time?.updated || item.time?.created), runtimeSessionId: item.id });
       const initialConversations = sortSessionsByUpdatedAt(remoteSessions.filter((item) => item.projectId).map(runtimeSession));
       const initialStandalone = sortSessionsByUpdatedAt(remoteSessions.filter((item) => !item.projectId).map(runtimeSession));
@@ -1408,15 +1411,26 @@ export function App() {
     message.role === "user" || String(message.text || "").trim() || String(message.reasoning || "").trim() || message.error
   );
   const reasoningEffort = reasoningPreferences[selected] || "";
+  const serviceTier = serviceTierPreferences[selected] || "";
   const changeReasoningEffort = (value) => {
     if (!session) return;
     const selectedModel = models.find(item => item.id === model);
     if (value && !selectedModel?.reasoningEfforts?.includes(value)) return;
     const id = session.id;
     modelPreferenceWritesRef.current = modelPreferenceWritesRef.current.catch(() => undefined)
-      .then(() => workbenchApi.updateSessionPreference(id, model, value))
+      .then(() => workbenchApi.updateSessionPreference(id, model, value, serviceTier))
       .then(() => setReasoningPreferences(current => ({ ...current, [id]: value })))
       .catch(error => setStatus(`推理强度保存失败：${error.message}`));
+  };
+  const changeServiceTier = (value) => {
+    if (!session) return;
+    const selectedModel = models.find(item => item.id === model);
+    if (value && !selectedModel?.serviceTiers?.includes(value)) return;
+    const id = session.id;
+    modelPreferenceWritesRef.current = modelPreferenceWritesRef.current.catch(() => undefined)
+      .then(() => workbenchApi.updateSessionPreference(id, model, reasoningEffort, value))
+      .then(() => setServiceTierPreferences(current => ({ ...current, [id]: value })))
+      .catch(error => setStatus(`响应速度保存失败：${error.message}`));
   };
   const authoritativeSessionModel = session?.model || insightsBySession[selected]?.context?.model;
   useEffect(() => {
@@ -1427,6 +1441,7 @@ export function App() {
     const sessionID = session.id;
     setModel(modelId);
     setReasoningPreferences(current => ({ ...current, [sessionID]: "" }));
+    setServiceTierPreferences(current => ({ ...current, [sessionID]: "" }));
     const updateSessionModel = (items) => items.map((item) => item.id === sessionID ? { ...item, model: modelId } : item);
     setConversations(updateSessionModel);
     setStandaloneSessions(updateSessionModel);
@@ -1730,6 +1745,7 @@ export function App() {
           remoteID = remote.id;
           runtimeDisplayID = remote.id;
           setReasoningPreferences((current) => ({ ...current, [remote.id]: current[localID] || "" }));
+          setServiceTierPreferences((current) => ({ ...current, [remote.id]: current[localID] || "" }));
           if (project) setConversations((current) => current.map((item) => item.id === localID ? { ...item, id: remote.id, title, model, updatedAt: message.createdAt, runtimeSessionId: remote.id } : item));
           else setStandaloneSessions((current) => current.map((item) => item.id === localID ? { ...item, id: remote.id, title, model, updatedAt: message.createdAt } : item));
           setMessagesBySession((current) => { const next = { ...current, [remote.id]: current[localID] || [message] }; delete next[localID]; return next; });
@@ -1740,7 +1756,7 @@ export function App() {
         } else remoteID = localID;
       }
       setRuntimeEnabledSessions((current) => new Set([...current, runtimeDisplayID]));
-      const promptResult = await agentApi.prompt(remoteID, text, model, selectedAttachments, { project: project?.workspaceDirectory || project?.name || null, workload: "general-agent", permissionMode, reasoningEffort });
+      const promptResult = await agentApi.prompt(remoteID, text, model, selectedAttachments, { project: project?.workspaceDirectory || project?.name || null, workload: "general-agent", permissionMode, reasoningEffort, serviceTier });
       if (promptResult?.data?.queued) setStatus(promptResult.data.delivery === "steer" ? "补充要求正在送入当前任务…" : `已加入待执行队列（第 ${promptResult.data.position} 条）。`);
       const sentIdentities = new Set(selectedAttachments.map(attachmentFileIdentity));
       const sentOwnerIDs = new Set([localID, runtimeDisplayID]);
@@ -2044,7 +2060,7 @@ export function App() {
         {sidebarOpen ? <button className="sidebar-scrim" aria-label="关闭会话与项目" onClick={() => setSidebarOpen(false)} /> : null}
         <SurfaceBoundary label="项目栏" resetKey={`${projects.length}:${standaloneSessions.length}`}><Sidebar projects={projects} conversations={conversations} standaloneSessions={standaloneSessions} selected={selected} selectedProject={selectedProject} expandedProjects={expandedProjects} runningSessionIds={runningSessionIds} runtimeSessions={runtimeSessions} modelCount={`${selectableModelCount}/${models.length}`} loading={bootstrapping} onSelect={(id) => { selectSession(id); setSidebarOpen(false); }} onSelectProject={selectProject} onNew={() => { void createSession(); setSidebarOpen(false); }} onNewProject={() => { setProjectMutationError(""); setProjectDialogOpen(true); }} onDiscoverProjects={() => { setDiscoveryError(""); setDiscoveryOpen(true); void refresh(); }} onNewProjectSession={(item) => void createProjectSession(item)} onOpenProjectFiles={(item) => void openProjectFiles(item)} onRenameProject={(item) => void renameProject(item)} onDeleteProject={(item) => void deleteProject(item)} onRenameSession={(item) => void renameSession(item)} onDeleteSession={(item) => void deleteSession(item)} onForkSession={(item) => void forkSession(item)} onCapabilities={() => void openCapabilities()} onPlugins={() => void openPlugins()} onControl={openControl} onCollapse={() => setSidebarCollapsed(true)} /></SurfaceBoundary>
         <PanelResizer className="sidebar-resizer" label="调整项目目录宽度" controls="project-sidebar" value={sidebarWidth} min={SIDEBAR_MIN_WIDTH} max={SIDEBAR_MAX_WIDTH} onPointerDown={(event) => beginResize("sidebar", event)} onChange={updateSidebarWidth} />
-        <SurfaceBoundary label="会话区" resetKey={selected}><Conversation session={session} project={project} messages={messages} permissions={permissions} insight={insightsBySession[selected]} hasRuntime={Boolean(knownRuntimeID)} attachments={attachments} olderCursor={messageCursors[selected]} loadingOlder={loadingOlder} models={models} model={model} permissionMode={permissionMode} reasoningEffort={reasoningEffort} onReasoningEffortChange={changeReasoningEffort} running={running} stopping={stopping} status={status} bootstrapping={bootstrapping} bootstrapError={bootstrapError} focusMode={focusMode} sidebarCollapsed={sidebarCollapsed} onLoadOlder={loadOlder} onModelChange={changeModel} onPermissionModeChange={changePermissionMode} onSend={send} onStop={stop} onAttach={attachFile} onRemoveAttachment={removeAttachment} onOpenControl={openControl} onOpenCapabilities={() => void openCapabilities()} onPanoramaOpen={panoramaAction} onPermissionReply={replyPermission} onExport={exportConversation} onOpenFiles={openCurrentFiles} onOpenDiff={() => void openDiff()} onOpenSidebar={() => setSidebarOpen(true)} onExpandSidebar={() => setSidebarCollapsed(false)} onToggleFocus={() => setFocusMode((current) => { if (!current) setFilePanelOpen(false); return !current; })} /></SurfaceBoundary>
+        <SurfaceBoundary label="会话区" resetKey={selected}><Conversation session={session} project={project} messages={messages} permissions={permissions} insight={insightsBySession[selected]} hasRuntime={Boolean(knownRuntimeID)} attachments={attachments} olderCursor={messageCursors[selected]} loadingOlder={loadingOlder} models={models} model={model} permissionMode={permissionMode} reasoningEffort={reasoningEffort} serviceTier={serviceTier} onReasoningEffortChange={changeReasoningEffort} onServiceTierChange={changeServiceTier} running={running} stopping={stopping} status={status} bootstrapping={bootstrapping} bootstrapError={bootstrapError} focusMode={focusMode} sidebarCollapsed={sidebarCollapsed} onLoadOlder={loadOlder} onModelChange={changeModel} onPermissionModeChange={changePermissionMode} onSend={send} onStop={stop} onAttach={attachFile} onRemoveAttachment={removeAttachment} onOpenControl={openControl} onOpenCapabilities={() => void openCapabilities()} onPanoramaOpen={panoramaAction} onPermissionReply={replyPermission} onExport={exportConversation} onOpenFiles={openCurrentFiles} onOpenDiff={() => void openDiff()} onOpenSidebar={() => setSidebarOpen(true)} onExpandSidebar={() => setSidebarCollapsed(false)} onToggleFocus={() => setFocusMode((current) => { if (!current) setFilePanelOpen(false); return !current; })} /></SurfaceBoundary>
         {filePanelOpen ? <PanelResizer className="file-panel-resizer" label="调整项目文件宽度" controls="project-file-panel" value={filePanelWidth} min={FILE_PANEL_MIN_WIDTH} max={filePanelMaxWidth()} keyboardDirection={-1} onPointerDown={(event) => beginResize("files", event)} onChange={updateFilePanelWidth} /> : null}
         <SurfaceBoundary label="文件预览" resetKey={`${selected}:${filePanelProjectId}:${filePanelOpen}`}><FilePanel session={session} project={projects.find((item) => item.id === filePanelProjectId) || project} open={filePanelOpen} requestedFile={filePanelRequest} canAttach={!filePanelProjectId || filePanelProjectId === project?.id} onClose={() => { setFilePanelOpen(false); setFilePanelProjectId(""); setFilePanelRequest(null); }} onAttach={attachFile} onDeleted={removeDeletedAttachment} onActiveFileChange={(path) => setFilePanelRequest((current) => ({ path, key: current?.key || `browse:${selected}` }))} /></SurfaceBoundary>
       </section>

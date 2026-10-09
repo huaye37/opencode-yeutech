@@ -34,7 +34,9 @@ export function createSystemTaskStore(databasePath) {
   if (!columns.has("prompt_message_id")) database.exec("ALTER TABLE system_tasks ADD COLUMN prompt_message_id TEXT");
   if (!columns.has("error_code")) database.exec("ALTER TABLE system_tasks ADD COLUMN error_code TEXT");
   if (!columns.has("reasoning_effort")) database.exec("ALTER TABLE system_tasks ADD COLUMN reasoning_effort TEXT");
+  if (!columns.has("service_tier")) database.exec("ALTER TABLE system_tasks ADD COLUMN service_tier TEXT");
   const writeReasoning = database.prepare("UPDATE system_tasks SET reasoning_effort = ? WHERE id = ?");
+  const writeServiceTier = database.prepare("UPDATE system_tasks SET service_tier = ? WHERE id = ?");
   const findSession = database.prepare("SELECT * FROM system_sessions WHERE session_key = ?");
   const saveSession = database.prepare(`INSERT INTO system_sessions(session_key, runtime_session_id, created_at, updated_at)
     VALUES (?, ?, ?, ?) ON CONFLICT(session_key) DO UPDATE SET runtime_session_id=excluded.runtime_session_id, updated_at=excluded.updated_at`);
@@ -54,6 +56,7 @@ export function createSystemTaskStore(databasePath) {
     insertTask.run(task.id, task.idempotencyKey || null, task.sessionKey, task.runtimeSessionID, task.kind, task.modelID, task.prompt, task.status, now, now);
     if (task.promptMessageID) updateAttempt.run(task.promptMessageID, task.modelID, task.prompt, now, task.id);
     writeReasoning.run(task.reasoningEffort || null, task.id);
+    writeServiceTier.run(task.serviceTier || null, task.id);
     return findTask.get(task.id);
   }
 
@@ -65,6 +68,7 @@ export function createSystemTaskStore(databasePath) {
     },
     task: (id) => findTask.get(id),
     setReasoning(id, value) { writeReasoning.run(value || null, id); },
+    setServiceTier(id, value) { writeServiceTier.run(value || null, id); },
     idempotent: (key) => key ? findIdempotent.get(key) : undefined,
     create: insert,
     reserve(task, maxActive = 2) {

@@ -16,7 +16,7 @@ const CAPABILITY_FIELDS = new Set([
   "id", "object", "created", "owned_by", "type", "display_name", "description",
   "context_length", "max_input_tokens", "max_output_tokens", "supported_parameters",
   "supported_input_modalities", "supported_output_modalities", "supported_workloads", "thinking", "supports_web_search",
-  "available", "selectable", "unavailable_reason", "capability_status",
+  "available", "selectable", "unavailable_reason", "capability_status", "service_tiers",
 ]);
 const CAPABILITY_STATUSES = new Set(["incomplete", "complete", "ready"]);
 const CAPABILITY_MODALITIES = new Set(["text", "image", "audio", "video"]);
@@ -79,6 +79,14 @@ function validateThinking(value, index) {
   }
 }
 
+function validateServiceTiers(value, index) {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) throw capabilityError(`data[${index}].service_tiers`, "must be an array");
+  const ids = value.map((item) => typeof item === "string" ? item : item?.id);
+  if (ids.some((id) => id !== "priority" && id !== "ultrafast")) throw capabilityError(`data[${index}].service_tiers`, "contains an unsupported service tier");
+  if (new Set(ids).size !== ids.length) throw capabilityError(`data[${index}].service_tiers`, "must not contain duplicates");
+}
+
 export function validateCapabilityCatalog(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw capabilityError("payload", "must be an object");
@@ -123,6 +131,7 @@ export function validateCapabilityCatalog(payload) {
       }
     }
     validateThinking(entry.thinking, index);
+    validateServiceTiers(entry.service_tiers, index);
     if (entry.supports_web_search !== undefined && typeof entry.supports_web_search !== "boolean") {
       throw capabilityError(`data[${index}].supports_web_search`, "must be a boolean");
     }
@@ -219,6 +228,7 @@ export function normalizeModelCatalog(payload) {
       limit: context && input && output ? { context, input, output } : null,
       modalities,
       ...(entry.thinking?.levels?.length ? { reasoningEfforts: [...entry.thinking.levels] } : {}),
+      ...(entry.service_tiers?.length ? { serviceTiers: entry.service_tiers.map((item) => typeof item === "string" ? item : item.id) } : {}),
       ...(supportedWorkloads ? { supportedWorkloads } : {}),
     }];
   });

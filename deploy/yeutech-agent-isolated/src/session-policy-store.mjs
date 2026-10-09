@@ -31,9 +31,11 @@ export function createSessionPolicyStore(databasePath) {
     database.exec("ALTER TABLE session_policies ADD COLUMN model_id TEXT");
   }
   if (!database.prepare("PRAGMA table_info(session_policies)").all().some(column => column.name === "reasoning_effort")) database.exec("ALTER TABLE session_policies ADD COLUMN reasoning_effort TEXT");
-  const read = database.prepare("SELECT permission_mode, model_id, reasoning_effort, updated_at FROM session_policies WHERE portal_user_id = ? AND session_id = ?");
-  const list = database.prepare("SELECT session_id, permission_mode, model_id, reasoning_effort, updated_at FROM session_policies WHERE portal_user_id = ?");
+  if (!database.prepare("PRAGMA table_info(session_policies)").all().some(column => column.name === "service_tier")) database.exec("ALTER TABLE session_policies ADD COLUMN service_tier TEXT");
+  const read = database.prepare("SELECT permission_mode, model_id, reasoning_effort, service_tier, updated_at FROM session_policies WHERE portal_user_id = ? AND session_id = ?");
+  const list = database.prepare("SELECT session_id, permission_mode, model_id, reasoning_effort, service_tier, updated_at FROM session_policies WHERE portal_user_id = ?");
   const writeReasoning = database.prepare("UPDATE session_policies SET reasoning_effort = ?, updated_at = ? WHERE portal_user_id = ? AND session_id = ?");
+  const writeServiceTier = database.prepare("UPDATE session_policies SET service_tier = ?, updated_at = ? WHERE portal_user_id = ? AND session_id = ?");
   const write = database.prepare(`INSERT INTO session_policies (portal_user_id, session_id, permission_mode, updated_at) VALUES (?, ?, ?, ?)
     ON CONFLICT(portal_user_id, session_id) DO UPDATE SET permission_mode=excluded.permission_mode, updated_at=excluded.updated_at`);
   const writeModel = database.prepare(`INSERT INTO session_policies (portal_user_id, session_id, permission_mode, model_id, updated_at) VALUES (?, ?, 'smart', ?, ?)
@@ -48,6 +50,8 @@ export function createSessionPolicyStore(databasePath) {
     getModel(portalUserId, sessionId) { return read.get(Number(portalUserId), String(sessionId))?.model_id || null; },
     getReasoning(portalUserId, sessionId) { return read.get(Number(portalUserId), String(sessionId))?.reasoning_effort || ""; },
     setReasoning(portalUserId, sessionId, effort) { writeReasoning.run(effort || null, Date.now(), Number(portalUserId), String(sessionId)); },
+    getServiceTier(portalUserId, sessionId) { return read.get(Number(portalUserId), String(sessionId))?.service_tier || ""; },
+    setServiceTier(portalUserId, sessionId, tier) { writeServiceTier.run(tier || null, Date.now(), Number(portalUserId), String(sessionId)); },
     setModel(portalUserId, sessionId, modelId) {
       const selected = cleanModel(modelId);
       writeModel.run(Number(portalUserId), String(sessionId), selected, Date.now());
@@ -59,6 +63,7 @@ export function createSessionPolicyStore(databasePath) {
         permissionMode: MODES.has(row.permission_mode) ? row.permission_mode : "smart",
         modelId: row.model_id || null,
         reasoningEffort: row.reasoning_effort || "",
+        serviceTier: row.service_tier || "",
         updatedAt: Number(row.updated_at),
       }));
     },

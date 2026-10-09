@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fetchModelCatalog, selectDefaultModel } from "./model-catalog.mjs";
-import { reasoningVariant } from "./reasoning-preference.mjs";
+import { modelVariant, reasoningVariant, serviceTier } from "./reasoning-preference.mjs";
 import { createSystemTaskStore } from "./system-task-store.mjs";
 import { extendActivityLease, releaseActivityLease, reserveActivityLease } from "./activity-lease.mjs";
 import { buildContextPack, compareReplay, evaluateEvidence, modelEligibility, runtimeBudget, WORKLOAD_PROFILES } from "./control-plane.mjs";
@@ -942,6 +942,7 @@ export function createAgentBff(options) {
       kind: task.kind,
       modelId: task.model_id,
       reasoningEffort: task.reasoning_effort || "",
+      serviceTier: task.service_tier || "",
       status: task.status,
       error: task.error,
       errorCode: task.error_code || null,
@@ -1025,7 +1026,10 @@ export function createAgentBff(options) {
     return withAdmission("system-kaoyan", async () => {
       const existing = systemStore.idempotent(idempotencyKey);
       if (existing) return existing;
-      const variant = reasoningVariant(await requireSystemModel(modelID), payload.reasoningEffort);
+      const capability = await requireSystemModel(modelID);
+      const reasoning = reasoningVariant(capability, payload.reasoningEffort);
+      const tier = serviceTier(capability, payload.serviceTier);
+      const variant = modelVariant(capability, reasoning, tier);
       await requireWorkerCapacity(systemUpstream, options.systemWorkspace);
       let session = systemStore.session(sessionKey);
       if (!session) {
@@ -1040,7 +1044,8 @@ export function createAgentBff(options) {
         runtimeSessionID: session.runtime_session_id,
         kind,
         modelID,
-        reasoningEffort: variant,
+        reasoningEffort: reasoning,
+        serviceTier: tier,
         prompt,
         promptMessageID: `msg_${randomUUID().replaceAll("-", "")}`,
         status: "submitting",
@@ -1244,14 +1249,18 @@ export function createAgentBff(options) {
           const modelID = String(payload.modelId || task.model_id);
           const prompt = String(payload.prompt || task.prompt).trim();
           const resumed = await withAdmission("system-kaoyan", async () => {
-            const variant = reasoningVariant(await requireSystemModel(modelID), payload.reasoningEffort ?? task.reasoning_effort);
+            const capability = await requireSystemModel(modelID);
+            const reasoning = reasoningVariant(capability, payload.reasoningEffort ?? task.reasoning_effort);
+            const tier = serviceTier(capability, payload.serviceTier ?? task.service_tier);
+            const variant = modelVariant(capability, reasoning, tier);
             await requireWorkerCapacity(systemUpstream, options.systemWorkspace);
             const promptMessageID = `msg_${randomUUID().replaceAll("-", "")}`;
             const reservation = systemStore.reserveResume(task.id, promptMessageID, modelID, prompt, maxConcurrentPerWorker);
             if (reservation.alreadyActive) return reservation.task;
             if (reservation.capacityReached) throw portalError(`Worker concurrency limit reached (${maxConcurrentPerWorker})`, { statusCode: 429, code: "worker_capacity", retryable: true, scope: "system-worker", recoveryAction: "retry_later" });
             if (reservation.sessionBusy) throw portalError("This system session already has an active task", { statusCode: 409, code: "system_session_busy", retryable: true, scope: "system-task", recoveryAction: "retry_later" });
-            systemStore.setReasoning(task.id, variant);
+            systemStore.setReasoning(task.id, reasoning);
+            systemStore.setServiceTier(task.id, tier);
             try {
               if (systemWorkerLease) await extendActivityLease(systemWorkerLease, { sessionId: task.runtime_session_id, reasons: ["system-task-resume"], durationMs: options.activityLeaseMs });
               await openCodeRequest(`/session/${task.runtime_session_id}/prompt_async`, {
@@ -1375,14 +1384,16 @@ export function createAgentBff(options) {
         const capability = catalog.find((item) => item.id === payload.modelId);
         if (!capability?.selectable) throw portalError(capability?.disabledReason || "Requested model is unavailable", { statusCode: 409, code: "session_model_unavailable", retryable: false, scope: "session" });
         const effort = reasoningVariant(capability, payload.reasoningEffort);
+        const tier = serviceTier(capability, payload.serviceTier);
         if (sessionID.startsWith("ses_local_")) {
           const draft = sessionDraftStore?.updateModel(identity.user.portalUserId, sessionID, capability.id);
           if (!draft) throw portalError("Session draft was not found", { statusCode: 404, code: "session_draft_not_found", retryable: false, scope: "session" });
         }
         const modelId = sessionPolicyStore.setModel(identity.user.portalUserId, sessionID, capability.id);
         sessionPolicyStore.setReasoning(identity.user.portalUserId, sessionID, effort);
+        sessionPolicyStore.setServiceTier(identity.user.portalUserId, sessionID, tier);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
-        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { sessionId: sessionID, modelId, reasoningEffort: effort || "" } }));
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { sessionId: sessionID, modelId, reasoningEffort: effort || "", serviceTier: tier || "" } }));
         return;
       }
       if (incoming.pathname === "/api/workbench/session-drafts" && request.method === "POST") {
@@ -1862,7 +1873,9 @@ export function createAgentBff(options) {
             throw Object.assign(new Error(capability?.disabledReason || "Requested model is not in the safe capability catalog"), { statusCode: 409 });
           }
           const projectName = promptPayload?.yeutech?.project;
-          const variant = reasoningVariant(capability, promptPayload?.yeutech?.reasoningEffort ?? promptPayload.variant);
+          const reasoning = reasoningVariant(capability, promptPayload?.yeutech?.reasoningEffort ?? promptPayload.variant);
+          const tier = serviceTier(capability, promptPayload?.yeutech?.serviceTier);
+          const variant = modelVariant(capability, reasoning, tier);
           if (variant) promptPayload.variant = variant;
           else delete promptPayload.variant;
           const sourcePaths = Array.isArray(promptPayload?.yeutech?.paths) ? promptPayload.yeutech.paths : [];
@@ -1881,7 +1894,8 @@ export function createAgentBff(options) {
           }
           sessionPolicyStore?.set(identity.user.portalUserId, sessionID, permissionMode);
           sessionPolicyStore?.setModel(identity.user.portalUserId, sessionID, requestedModel);
-          sessionPolicyStore?.setReasoning(identity.user.portalUserId, sessionID, variant);
+          sessionPolicyStore?.setReasoning(identity.user.portalUserId, sessionID, reasoning);
+          sessionPolicyStore?.setServiceTier(identity.user.portalUserId, sessionID, tier);
           delete promptPayload.tools;
           await workerRequest(worker, `/session/${sessionID}`, {
             method: "PATCH",
