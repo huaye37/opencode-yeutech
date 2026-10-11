@@ -116,7 +116,7 @@ it.live("configured chunkTimeout raises a retryable response stream error when S
               return error
             }
           })
-          expect(error).toBeInstanceOf(ProviderError.ResponseStreamError)
+          expect(responseStreamError(error)).toBeInstanceOf(ProviderError.ResponseStreamError)
           expect(
             SessionRetry.retryable(MessageV2.fromError(error, { providerID: model.providerID }), model.providerID),
           ).toEqual({ message: "SSE read timed out" })
@@ -271,7 +271,7 @@ for (const [route, modelID] of Object.entries(gatewayModels)) {
 
             const error = yield* Effect.promise(() => firstStreamError(result.fullStream))
             expect(urls).toHaveLength(1)
-            expect(error).toBeInstanceOf(ProviderError.ResponseStreamError)
+            expect(responseStreamError(error)).toBeInstanceOf(ProviderError.ResponseStreamError)
           }),
         { config: gatewayConfig({ chunkTimeout: 50 }) },
       )
@@ -348,6 +348,12 @@ async function firstStreamError(stream: AsyncIterable<{ type: string; error?: un
   } catch (error) {
     return error
   }
+}
+
+function responseStreamError(error: unknown) {
+  if (error instanceof ProviderError.ResponseStreamError) return error
+  if (error instanceof Error && error.cause instanceof ProviderError.ResponseStreamError) return error.cause
+  return undefined
 }
 
 function providerConfig(url: string, options: Record<string, unknown> = {}) {

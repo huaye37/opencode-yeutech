@@ -689,6 +689,18 @@ export function fromError(
         },
         { cause: e },
       ).toObject()
+    case APICallError.isInstance(e) && e.cause instanceof ProviderError.ResponseStreamError:
+      return new APIError(
+        {
+          message: e.cause.message,
+          isRetryable: true,
+          metadata: {
+            code: e.cause.name,
+            ...(e.url ? { url: e.url } : {}),
+          },
+        },
+        { cause: e },
+      ).toObject()
     case APICallError.isInstance(e):
       const parsed = ProviderError.parseAPICallError({
         providerID: ctx.providerID,
