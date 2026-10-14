@@ -8,6 +8,7 @@ import test from "node:test";
 import { createAgentBff, sessionPermissionRules } from "../src/agent-bff.mjs";
 import { readActivityLease, reserveActivityLease } from "../src/activity-lease.mjs";
 import { createProjectionEventStore } from "../src/projection-event-store.mjs";
+import { createSessionPreferenceQueue } from "../web/src/session-preference-queue.js";
 
 const IDENTITY_SECRET = "abcdef0123456789abcdef0123456789";
 const PASSWORD = "opencode-test-password-0123456789";
@@ -258,7 +259,7 @@ test("loads the passive workbench and migration history without starting a porta
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-passive-bootstrap-"));
   const workspace = path.join(root, "workspace");
   await mkdir(workspace);
-  const catalog = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end('{"data":[{"id":"ready","context_length":128000,"max_input_tokens":120000,"max_output_tokens":8000,"supported_input_modalities":["text"],"supported_output_modalities":["text"]}]}'));
+  const catalog = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end('{"data":[{"id":"ready","context_length":128000,"max_input_tokens":120000,"max_output_tokens":8000,"supported_input_modalities":["text"],"supported_output_modalities":["text"],"thinking":{"levels":["medium","high"]},"service_tiers":["priority"]}]}'));
   const migration = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end("[]"));
   const catalogURL = await listen(catalog);
   const migrationURL = await listen(migration);
@@ -290,6 +291,31 @@ test("loads the passive workbench and migration history without starting a porta
       assert.equal((await modelPreference.json()).data.modelId, "ready");
       const refreshedBootstrap = await fetch(`${baseURL}/api/workbench/bootstrap`, { headers: identityHeaders() }).then((response) => response.json());
       assert.equal(refreshedBootstrap.sessionPreferences.ses_passive.modelId, "ready");
+      const queue = createSessionPreferenceQueue(async (id, payload) => {
+        const response = await fetch(`${baseURL}/api/workbench/session-preferences/${id}`, {
+          method: "PATCH", headers: { ...identityHeaders(), "content-type": "application/json" }, body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error?.message || "preference rejected");
+        return result.data;
+      });
+      const initial = { modelId: "ready", reasoningEffort: "", serviceTier: "" };
+      await Promise.all([
+        queue.update("ses_passive", initial, { serviceTier: "priority" }, () => {}),
+        queue.update("ses_passive", initial, { reasoningEffort: "medium" }, () => {}),
+      ]);
+      const persisted = await fetch(`${baseURL}/api/workbench/bootstrap`, { headers: identityHeaders() }).then(response => response.json());
+      assert.equal(persisted.sessionPreferences.ses_passive.serviceTier, "priority");
+      assert.equal(persisted.sessionPreferences.ses_passive.reasoningEffort, "medium");
+      const nextPrompt = await queue.flush("ses_passive", initial);
+      assert.equal(nextPrompt.serviceTier, "priority");
+      assert.equal(nextPrompt.reasoningEffort, "medium");
+      await assert.rejects(queue.update("ses_passive", initial, { serviceTier: "ultrafast" }, () => {}));
+      await assert.rejects(queue.flush("ses_passive"));
+      await queue.update("ses_passive", initial, { serviceTier: "" }, () => {});
+      const recovered = await queue.flush("ses_passive");
+      assert.equal(recovered.serviceTier, "");
+      assert.equal(recovered.reasoningEffort, "medium");
       assert.equal((await fetch(`${baseURL}/api/workbench/profiles`, { headers: identityHeaders() })).status, 200);
       const control = await fetch(`${baseURL}/api/workbench/control`, { headers: identityHeaders() }).then((response) => response.json());
       assert.equal(control.runtimeBudget.requestedInteractiveWorkers, 0);

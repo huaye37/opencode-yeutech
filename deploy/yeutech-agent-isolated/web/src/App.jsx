@@ -8,6 +8,7 @@ import { dedupeProjectedMessages, latestProjectedMessageWindow, trajectoryForVis
 import { isNearMessageBottom, reconcileAfterTerminal, scrollTopAfterPrepend } from "./message-scroll.js";
 import { parseMarkdownBlocks } from "./markdown-parser.js";
 import { normalizeProjectFileReferences, projectFilePath } from "./project-file-reference.js";
+import { createSessionPreferenceQueue } from "./session-preference-queue.js";
 
 const SELECTED_STORAGE_KEY = "yeutech-agent-workbench:selected:v2";
 const SIDEBAR_WIDTH_STORAGE_KEY = "yeutech-agent-workbench:sidebar-width:v1";
@@ -1164,7 +1165,10 @@ export function App() {
   const resizeCleanupRef = useRef(null);
   const messageRolesRef = useRef(new Map());
   const bufferedOlderMessagesRef = useRef(new Map());
-  const modelPreferenceWritesRef = useRef(Promise.resolve());
+  const [modelPreferenceWrites] = useState(() => createSessionPreferenceQueue(async (id, value) => {
+    const result = await workbenchApi.updateSessionPreference(id, value.modelId, value.reasoningEffort, value.serviceTier);
+    return result.data;
+  }));
 
   useEffect(() => { messageRolesRef.current.clear(); }, [selected]);
 
@@ -1412,25 +1416,36 @@ export function App() {
   );
   const reasoningEffort = reasoningPreferences[selected] || "";
   const serviceTier = serviceTierPreferences[selected] || "";
+  const saveSessionPreference = (patch) => {
+    const id = session.id;
+    const initial = { modelId: model, reasoningEffort, serviceTier };
+    const publish = (value, error) => {
+      setReasoningPreferences(current => ({ ...current, [id]: value.reasoningEffort }));
+      setServiceTierPreferences(current => ({ ...current, [id]: value.serviceTier }));
+      const update = items => items.map(item => item.id === id ? { ...item, model: value.modelId } : item);
+      setConversations(update);
+      setStandaloneSessions(update);
+      if (selectedRef.current === id) {
+        setModel(value.modelId);
+        if (error) setStatus(`会话参数保存失败，请重新选择后再发送：${error.message}`);
+        if (error === null) setStatus(current => current.startsWith("会话参数保存失败") ? "" : current);
+      }
+    };
+    // The latest failed save is reported by publish; an older failure must not
+    // overwrite the status of a newer successful retry. flush still rejects it.
+    void modelPreferenceWrites.update(id, initial, patch, publish).catch(() => undefined);
+  };
   const changeReasoningEffort = (value) => {
     if (!session) return;
     const selectedModel = models.find(item => item.id === model);
     if (value && !selectedModel?.reasoningEfforts?.includes(value)) return;
-    const id = session.id;
-    modelPreferenceWritesRef.current = modelPreferenceWritesRef.current.catch(() => undefined)
-      .then(() => workbenchApi.updateSessionPreference(id, model, value, serviceTier))
-      .then(() => setReasoningPreferences(current => ({ ...current, [id]: value })))
-      .catch(error => setStatus(`推理强度保存失败：${error.message}`));
+    saveSessionPreference({ reasoningEffort: value });
   };
   const changeServiceTier = (value) => {
     if (!session) return;
     const selectedModel = models.find(item => item.id === model);
     if (value && !selectedModel?.serviceTiers?.includes(value)) return;
-    const id = session.id;
-    modelPreferenceWritesRef.current = modelPreferenceWritesRef.current.catch(() => undefined)
-      .then(() => workbenchApi.updateSessionPreference(id, model, reasoningEffort, value))
-      .then(() => setServiceTierPreferences(current => ({ ...current, [id]: value })))
-      .catch(error => setStatus(`响应速度保存失败：${error.message}`));
+    saveSessionPreference({ serviceTier: value });
   };
   const authoritativeSessionModel = session?.model || insightsBySession[selected]?.context?.model;
   useEffect(() => {
@@ -1438,19 +1453,7 @@ export function App() {
   }, [selected, authoritativeSessionModel, models]);
   const changeModel = (modelId) => {
     if (!session || !models.some((item) => item.id === modelId && item.selectable)) return;
-    const sessionID = session.id;
-    setModel(modelId);
-    setReasoningPreferences(current => ({ ...current, [sessionID]: "" }));
-    setServiceTierPreferences(current => ({ ...current, [sessionID]: "" }));
-    const updateSessionModel = (items) => items.map((item) => item.id === sessionID ? { ...item, model: modelId } : item);
-    setConversations(updateSessionModel);
-    setStandaloneSessions(updateSessionModel);
-    modelPreferenceWritesRef.current = modelPreferenceWritesRef.current
-      .catch(() => undefined)
-      .then(() => workbenchApi.updateSessionPreference(sessionID, modelId))
-      .catch((error) => {
-        if (selectedRef.current === sessionID) setStatus(`模型选择保存失败：${error instanceof Error ? error.message : "未知错误"}`);
-      });
+    saveSessionPreference({ modelId, reasoningEffort: "", serviceTier: "" });
   };
   const knownRuntimeID = runtimeSessions[selected] || (!selected.startsWith("ses_local") && !isHistoricalConversation(selected) ? selected : "");
   const activeRuntimeID = runtimeEnabledSessions.has(selected) ? knownRuntimeID : "";
@@ -1732,6 +1735,7 @@ export function App() {
     setStandaloneSessions(markRecentlyActive);
     setMessagesBySession((current) => ({ ...current, [localID]: [...(current[localID] || []), message] })); setRunning(true); updateRunningSession(localID, true); setStatus(historical && !runtimeSessions[localID] ? "正在后台接续原会话…" : "正在通过 CLIProxyAPI 调用模型…");
     try {
+      const preference = await modelPreferenceWrites.flush(localID, { modelId: model, reasoningEffort, serviceTier });
       let remoteID = runtimeSessions[localID];
       if (historical && !remoteID) {
         const result = await migrationApi.continue(localID);
@@ -1746,8 +1750,8 @@ export function App() {
           runtimeDisplayID = remote.id;
           setReasoningPreferences((current) => ({ ...current, [remote.id]: current[localID] || "" }));
           setServiceTierPreferences((current) => ({ ...current, [remote.id]: current[localID] || "" }));
-          if (project) setConversations((current) => current.map((item) => item.id === localID ? { ...item, id: remote.id, title, model, updatedAt: message.createdAt, runtimeSessionId: remote.id } : item));
-          else setStandaloneSessions((current) => current.map((item) => item.id === localID ? { ...item, id: remote.id, title, model, updatedAt: message.createdAt } : item));
+          if (project) setConversations((current) => current.map((item) => item.id === localID ? { ...item, id: remote.id, title, model: preference.modelId, updatedAt: message.createdAt, runtimeSessionId: remote.id } : item));
+          else setStandaloneSessions((current) => current.map((item) => item.id === localID ? { ...item, id: remote.id, title, model: preference.modelId, updatedAt: message.createdAt } : item));
           setMessagesBySession((current) => { const next = { ...current, [remote.id]: current[localID] || [message] }; delete next[localID]; return next; });
           setRunningSessionIds((current) => { const next = new Set(current); next.delete(localID); next.add(remote.id); return next; });
           preserveAttachmentsOnNextSelection.current = true;
@@ -1756,7 +1760,7 @@ export function App() {
         } else remoteID = localID;
       }
       setRuntimeEnabledSessions((current) => new Set([...current, runtimeDisplayID]));
-      const promptResult = await agentApi.prompt(remoteID, text, model, selectedAttachments, { project: project?.workspaceDirectory || project?.name || null, workload: "general-agent", permissionMode, reasoningEffort, serviceTier });
+      const promptResult = await agentApi.prompt(remoteID, text, preference.modelId, selectedAttachments, { project: project?.workspaceDirectory || project?.name || null, workload: "general-agent", permissionMode, reasoningEffort: preference.reasoningEffort, serviceTier: preference.serviceTier });
       if (promptResult?.data?.queued) setStatus(promptResult.data.delivery === "steer" ? "补充要求正在送入当前任务…" : `已加入待执行队列（第 ${promptResult.data.position} 条）。`);
       const sentIdentities = new Set(selectedAttachments.map(attachmentFileIdentity));
       const sentOwnerIDs = new Set([localID, runtimeDisplayID]);
