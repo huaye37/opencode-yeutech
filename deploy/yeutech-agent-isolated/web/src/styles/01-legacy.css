@@ -1,0 +1,550 @@
+/*
+ * YEUTECH AI 工作台
+ *
+ * Every colour, opacity, blur and radius comes from the YEUTECH material contract
+ * (./design/yeutech-material-contract.css), which the portal drives through
+ * /api/portal/appearance?site=agent. This file only assigns components to layers:
+ *
+ *   page      .portal-shell
+ *   chrome    .workbench-toolbar, .sidebar, .conversation-header
+ *   surface   .command-stage (the single blurred workspace)
+ *   material  info strips, tool cards, reasoning, previews, dialog cards
+ *   control   buttons, fields, selects, chips
+ *   overlay   dialogs, file drawer, row menus
+ *   dim       .capability-scrim, .sidebar-scrim
+ *
+ * Layers nested inside the stage never blur again. The stage paints its blur on a
+ * pseudo-element so fixed-position drawers inside it still anchor to the viewport.
+ */
+
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  font-family: var(--font-ui);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+html[data-font-scale="large"] {
+  font-size: 17px;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: clip;
+  color: var(--yt-ink);
+  background: var(--yt-layer-page);
+}
+
+button,
+select,
+textarea,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:where(button, select, textarea, input, a, summary, [role="separator"]):focus-visible {
+  outline: 2px solid var(--yt-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Shared control recipes ---------- */
+
+.toolbar-actions button,
+.collapse-button,
+.header-files-button,
+.load-older,
+.panel-close,
+.console-actions button,
+.control-grid button,
+.dialog-actions button,
+.plugin-actions button,
+.surface-error button,
+.permission-reject,
+.preview-action,
+.attached-files > span,
+.panel-state.error button {
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-control);
+  border: 1px solid var(--yt-edge);
+  border-radius: var(--radius-control);
+  box-shadow: var(--yt-shadow-control), var(--yt-rim-control);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 120ms var(--ease-out);
+}
+
+:is(
+    .toolbar-actions button,
+    .collapse-button,
+    .header-files-button,
+    .load-older,
+    .panel-close,
+    .console-actions button,
+    .control-grid button,
+    .dialog-actions button,
+    .plugin-actions button,
+    .surface-error button,
+    .permission-reject,
+    .preview-action
+  ):not(:disabled):hover {
+  background-image: linear-gradient(var(--yt-state-hover), var(--yt-state-hover));
+}
+
+.primary-button,
+.send-button,
+.upload-button,
+.console-actions .console-primary,
+.dialog-actions .console-primary,
+.plugin-actions .console-primary,
+.preview-attach-action,
+.panel-state.error button {
+  color: oklch(0.99 0 0);
+  background-color: var(--yt-accent);
+  border: 1px solid color-mix(in oklch, var(--yt-accent) 82%, black);
+  border-radius: var(--radius-control);
+  box-shadow: var(--yt-shadow-control), inset 0 1px 0 oklch(1 0 0 / calc(var(--yt-liquid) * 0.3));
+}
+
+:is(.primary-button, .send-button, .upload-button, .console-primary, .preview-attach-action):not(:disabled):hover {
+  background-image: linear-gradient(oklch(1 0 0 / 0.1), oklch(1 0 0 / 0.1));
+}
+
+:is(
+    .primary-button,
+    .send-button,
+    .upload-button,
+    .toolbar-actions button,
+    .collapse-button,
+    .header-files-button,
+    .header-console-button,
+    .icon-button,
+    .tool-button,
+    .preview-action,
+    .file-row > button,
+    .inline-file-link,
+    .file-reference,
+    .console-actions button,
+    .dialog-actions button,
+    .plugin-actions button
+  ):not(:disabled):active {
+  transform: scale(0.97);
+}
+
+:is(button, .preview-action):disabled {
+  opacity: 0.45;
+}
+
+.icon-button,
+.tool-button,
+.add-file-button,
+.row-menu-trigger,
+.project-heading-actions button,
+.sidebar-action-grid button,
+.file-toolbar nav button,
+.file-delete,
+.attached-files button,
+.upload-queue article > button,
+.timeline-tool-content button,
+.image-artifacts > header button {
+  color: var(--yt-ink-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  transition: background-color 140ms ease, color 140ms ease, transform 120ms var(--ease-out);
+}
+
+:is(
+    .icon-button,
+    .tool-button,
+    .add-file-button,
+    .row-menu-trigger,
+    .project-heading-actions button,
+    .sidebar-action-grid button,
+    .file-toolbar nav button,
+    .attached-files button,
+    .upload-queue article > button
+  ):not(:disabled):hover {
+  color: var(--yt-ink);
+  background-color: var(--yt-state-hover);
+}
+
+.goal-create input,
+.project-dialog-body input,
+.file-findbar label,
+.file-findbar select,
+.search,
+.file-space-picker select {
+  color: var(--yt-ink);
+  background-color: var(--yt-layer-control);
+  border: 1px solid var(--yt-edge-strong);
+  border-radius: var(--radius-control);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+:is(.goal-create input, .project-dialog-body input, .file-findbar select, .file-space-picker select):focus,
+:is(.file-findbar label, .search):focus-within {
+  border-color: var(--yt-accent);
+  box-shadow: 0 0 0 3px var(--yt-focus-ring);
+  outline: none;
+}
+
+:is(.search, .file-findbar label) input:focus-visible {
+  outline: none;
+}
+
+/* ---------- Page, workspace and toolbar ---------- */
+
+.portal-shell {
+  min-height: 100svh;
+  overflow: hidden;
+}
+
+.workspace {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100svh;
+  min-height: 620px;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.workbench-toolbar {
+  min-height: 64px;
+  padding: 7px max(16px, calc((100vw - 2240px) / 2 + 16px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--yt-ink);
+  background: var(--yt-layer-chrome);
+  border: 0;
+  border-bottom: 1px solid var(--yt-edge);
+  border-radius: 0;
+  box-shadow: 0 8px 28px color-mix(in oklch, var(--yt-ink) 8%, transparent), inset 0 1px 0 var(--yt-specular);
+  -webkit-backdrop-filter: var(--yt-filter-chrome);
+  backdrop-filter: var(--yt-filter-chrome);
+}
+
+.workbench-toolbar h1 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+.workbench-toolbar p {
+  margin: 3px 0 0;
+  color: var(--yt-ink-secondary);
+  font-size: 12px;
+}
+
+.toolbar-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-title > div {
+  min-width: 0;
+}
+
+.toolbar-brand {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar-brand > .yeutech-mark {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.toolbar-brand > strong {
+  font-size: 13px;
+  font-weight: 760;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  flex: 0 0 1px;
+  background: var(--yt-separator);
+}
+
+.toolbar-context {
+  min-width: 0;
+}
+
+.toolbar-menu {
+  display: none;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-actions button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 560;
+  white-space: nowrap;
+}
+
+.capability {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 6px;
+  color: var(--yt-ink-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.capability svg {
+  color: var(--yt-success);
+}
+
+.capability.loading svg {
+  color: var(--yt-accent);
+  animation: loading-spin 0.9s linear infinite;
+}
+
+.capability.error,
+.capability.error svg {
+  color: var(--yt-danger);
+}
+
+/* ---------- Stage: the one blurred surface ---------- */
+
+.command-stage {
+  position: relative;
+  isolation: isolate;
+  min-height: 0;
+  flex: 1;
+  width: min(calc(100% - 32px), 2240px);
+  margin: 12px auto 16px;
+  display: grid;
+  grid-template-columns: var(--sidebar-width, 256px) 7px minmax(0, 1fr);
+  overflow: hidden;
+  color: var(--yt-ink);
+  background: var(--yt-layer-surface);
+  border: 1px solid var(--yt-edge);
+  border-radius: var(--radius-shell);
+  box-shadow: var(--yt-shadow-surface), var(--yt-rim);
+}
+
+.command-stage::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  content: "";
+  -webkit-backdrop-filter: var(--yt-filter-surface);
+  backdrop-filter: var(--yt-filter-surface);
+}
+
+.command-stage.sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.command-stage.sidebar-collapsed .sidebar,
+.command-stage.sidebar-collapsed .sidebar-resizer {
+  display: none;
+}
+
+.focus-mode {
+  padding: 0;
+  gap: 0;
+}
+
+.focus-mode .workbench-toolbar,
+.focus-mode .sidebar,
+.focus-mode .panel-resizer {
+  display: none;
+}
+
+.focus-mode .command-stage,
+.focus-mode .command-stage.files-open {
+  grid-template-columns: minmax(0, 1fr);
+  border: 0;
+  border-radius: 0;
+}
+
+.panel-resizer {
+  position: relative;
+  z-index: 6;
+  min-width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  outline: 0;
+}
+
+.file-panel-resizer {
+  display: none;
+}
+
+.panel-resizer::before {
+  position: absolute;
+  inset: 0 -3px;
+  content: "";
+}
+
+.panel-resizer span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  background: var(--yt-edge-strong);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 140ms ease, background-color 140ms ease;
+}
+
+.panel-resizer:hover span,
+.panel-resizer:focus-visible span,
+.panel-resizing .panel-resizer span {
+  opacity: 1;
+  background: var(--yt-accent);
+}
+
+.panel-resizer:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--yt-focus-ring);
+}
+
+.panel-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.panel-resizing * {
+  cursor: col-resize !important;
+}
+
+.surface-error {
+  min-width: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--yt-danger);
+  text-align: center;
+  background-image: linear-gradient(color-mix(in oklch, var(--yt-danger) 8%, transparent), color-mix(in oklch, var(--yt-danger) 8%, transparent));
+}
+
+.surface-error p {
+  margin: 0;
+  color: var(--yt-ink-secondary);
+}
+
+.surface-error button {
+  padding: 7px 12px;
+}
+
+/* ---------- Sidebar (chrome, flat inside the stage) ---------- */
+
+.sidebar {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--yt-layer-chrome);
+  border-right: 1px solid var(--yt-separator);
+}
+
+.sidebar-scrim {
+  display: none;
+}
+
+.sidebar-actions {
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--yt-separator);
+}
+
+html[data-density="compact"] .sidebar-actions {
+  padding: 10px;
+  gap: 6px;
+}
+
+html[data-density="comfortable"] .sidebar-actions {
+  padding: 18px;
+  gap: 10px;
+}
+
+.primary-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+}
+
+.primary-button,
+.collapse-button {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.collapse-button {
+  color: var(--yt-ink-secondary);
+}
