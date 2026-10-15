@@ -1,0 +1,7 @@
+PASS upload -> persisted attachment reference
+PASS send -> original prompt payload (Ultra + Ultrafast + attachment) -> running state
+PASS SSE permission projection -> single-use approval -> removal
+PASS stop -> abort -> terminal SSE reconciliation -> composer retained
+PASS new independent-session entry -> draft selection (browser fixture)
+PASS project creation and NAS discovery dialogs preserved
+PASS mobile project draft creation -> conversation pushed in (browser fixture)
