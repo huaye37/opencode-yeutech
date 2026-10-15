@@ -21,7 +21,7 @@ export function RowMenu({ label, children }) {
 
 export function SessionRow({ session, selected, running, runtimeAvailable, reasoningLabel, onSelect, onRename, onDelete, onFork }) {
   return <div className={`session-row ${selected ? "selected" : ""}`}>
-    <button className="session-row-main" onClick={onSelect}><span>{running ? <span className="session-running" aria-label="正在运行" /> : <Icon name="chatPlus" />}<b>{session.title}</b><time>{formatTime(session.updatedAt)}</time></span><small>{reasoningLabel}</small></button>
+    <button className="session-row-main" aria-current={selected ? "page" : undefined} onClick={onSelect}><span>{running ? <span className="session-running" aria-label="正在运行" /> : <Icon name="chatPlus" />}<b>{session.title}</b><time>{formatTime(session.updatedAt)}</time></span><small>{reasoningLabel}</small></button>
     <RowMenu label={`管理会话 ${session.title}`}><button role="menuitem" disabled={!runtimeAvailable} title={runtimeAvailable ? "" : "先发送消息以建立运行时会话"} onClick={() => onRename(session)}><Icon name="edit" size={15} />重命名</button><button role="menuitem" disabled={!runtimeAvailable} title={runtimeAvailable ? "" : "历史会话尚未建立运行时映射"} onClick={() => onFork(session)}><Icon name="fork" size={15} />Fork 会话</button><button className="danger" role="menuitem" disabled={!runtimeAvailable} title={runtimeAvailable ? "" : "历史会话尚未建立运行时映射"} onClick={() => onDelete(session)}><Icon name="trash" size={15} />删除会话</button></RowMenu>
   </div>;
 }
@@ -40,7 +40,7 @@ export function Sidebar({ projects, conversations, standaloneSessions, selected,
     try { window.localStorage.setItem(STANDALONE_EXPANDED_STORAGE_KEY, String(next)); }
     catch { /* Folder state persistence is optional. */ }
   };
-  return <aside className="sidebar" id="project-sidebar"><div className="sidebar-actions">
+  return <aside className="sidebar" id="project-sidebar" aria-label="会话与项目" data-layer="chrome"><h1 className="directory-heading">会话与项目</h1><div className="sidebar-actions">
     <div className="primary-action-row"><button className="primary-button" disabled={loading} onClick={onNew}><Icon name="chatPlus" />新建独立会话</button><button className="collapse-button" aria-label="收起项目栏" title="收起项目栏" onClick={onCollapse}><Icon name="panel" /></button></div>
     <div className="sidebar-action-grid"><button disabled={loading} onClick={onNewProject}><Icon name="plus" />新建项目</button><button disabled={loading} onClick={onDiscoverProjects}><Icon name="folderIn" />扫描 NAS 项目</button></div>
     <button className="sidebar-action console-entry" disabled={loading} onClick={onControl} aria-haspopup="dialog"><Icon name="shield" /><span className="sidebar-action-copy"><b>任务状态</b><small>当前目标、进度和最近操作</small></span><em>查看</em></button>

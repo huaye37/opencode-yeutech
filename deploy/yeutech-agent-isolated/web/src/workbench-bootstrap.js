@@ -2,7 +2,7 @@ import { migrationApi, workbenchApi } from "./api.js";
 import { sortSessionsByUpdatedAt } from "./session-ordering.js";
 import { isHistoricalConversation, readableStatus } from "./workbench-helpers.js";
 
-export function createWorkbenchBootstrap({ cachedSelection, projects, setProjects, conversations, setConversations, standaloneSessions, setStandaloneSessions, setSelected, setSelectedProject, setExpandedProjects, setRuntimeSessions, setRuntimeEnabledSessions, setModels, setModel, setReasoningPreferences, setServiceTierPreferences, setModelReload, setRunning, setRunningSessionIds, setStatus, setBootstrapping, setBootstrapError, refreshVersion, selectedRef }) {
+export function createWorkbenchBootstrap({ refreshVersion, projects, conversations, standaloneSessions, setBootstrapping, setBootstrapError, setModels, setModelReload, setModel, setReasoningPreferences, setServiceTierPreferences, selectedRef, cachedSelection, setProjects, setConversations, setStandaloneSessions, setRuntimeSessions, setRunningSessionIds, setRuntimeEnabledSessions, setSelected, setSelectedProject, setExpandedProjects, setRunning, setStatus }) {
   const refresh = async () => {
     const currentRefresh = ++refreshVersion.current;
     if (!projects.length && !conversations.length && !standaloneSessions.length) setBootstrapping(true);

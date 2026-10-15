@@ -12,7 +12,7 @@
   align-items: center;
   gap: 7px;
   padding: 0 8px;
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 540;
   white-space: nowrap;
 }
@@ -52,17 +52,17 @@
 
 .sidebar-action-copy b {
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 620;
 }
 
 .sidebar-action-copy small {
   color: var(--yt-ink-secondary);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .sidebar-action.console-entry > em {
-  font-size: 12px;
+  font-size: var(--ws-13);
   font-style: normal;
   font-weight: 600;
 }
@@ -84,7 +84,7 @@
   outline: 0;
   background: transparent;
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .search input::placeholder {
@@ -119,11 +119,11 @@
 
 .sidebar-loading b {
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .sidebar-loading small {
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .search-empty {
@@ -137,19 +137,19 @@
 
 .search-empty p {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .search-empty button {
   color: var(--yt-accent-ink);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .eyebrow {
   margin: 0;
   padding: 8px;
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -189,7 +189,7 @@
   padding: 0 4px 0 8px;
   color: var(--yt-ink-secondary);
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: var(--ws-13);
   text-align: left;
   transition: background-color 140ms ease;
 }
@@ -212,7 +212,7 @@
 
 .project-heading small {
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .project-heading-actions {
@@ -251,7 +251,7 @@
 .project-empty {
   margin: 4px 10px 10px 30px;
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .session-row {
@@ -305,7 +305,7 @@
 .session-row b {
   overflow: hidden;
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -313,7 +313,7 @@
 
 .session-row time {
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-variant-numeric: tabular-nums;
 }
 
@@ -322,7 +322,7 @@
   margin: 4px 0 0 23px;
   overflow: hidden;
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -388,7 +388,7 @@
   gap: 8px;
   padding: 0 9px;
   border-radius: var(--radius-compact);
-  font-size: 13px;
+  font-size: var(--ws-13);
   text-align: left;
   white-space: nowrap;
 }
@@ -439,7 +439,7 @@
   align-items: center;
   gap: 6px;
   padding: 0 11px;
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -488,7 +488,7 @@
   gap: 3px;
   overflow: hidden;
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -496,7 +496,7 @@
 .conversation-title h2 {
   margin: 2px 0 0;
   overflow: hidden;
-  font-size: 15px;
+  font-size: var(--ws-15);
   font-weight: 650;
   letter-spacing: -0.01em;
   text-overflow: ellipsis;

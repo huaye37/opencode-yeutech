@@ -31,11 +31,11 @@
 }
 
 html {
-  font-size: 16px;
+  font-size: var(--ws-15);
 }
 
 html[data-font-scale="large"] {
-  font-size: 17px;
+  font-size: var(--ws-17);
 }
 
 html,
@@ -264,7 +264,7 @@ button:disabled {
 
 .workbench-toolbar h1 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--ws-17);
   line-height: 1.2;
   letter-spacing: -0.02em;
   font-weight: 650;
@@ -273,7 +273,7 @@ button:disabled {
 .workbench-toolbar p {
   margin: 3px 0 0;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .toolbar-title {
@@ -301,7 +301,7 @@ button:disabled {
 }
 
 .toolbar-brand > strong {
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 760;
   letter-spacing: 0.18em;
   white-space: nowrap;
@@ -334,7 +334,7 @@ button:disabled {
   align-items: center;
   gap: 7px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 560;
   white-space: nowrap;
 }
@@ -346,7 +346,7 @@ button:disabled {
   gap: 7px;
   padding: 0 6px;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
   white-space: nowrap;
 }
 
@@ -541,7 +541,7 @@ html[data-density="comfortable"] .sidebar-actions {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--ws-15);
   font-weight: 600;
 }
 

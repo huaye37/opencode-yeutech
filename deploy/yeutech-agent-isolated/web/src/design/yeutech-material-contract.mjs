@@ -20,6 +20,7 @@ export const APPEARANCE_SITES = Object.freeze([
   "codex",
   "creator",
   "agent",
+  "assistant",
   "api",
   "kaoyan",
   "write",

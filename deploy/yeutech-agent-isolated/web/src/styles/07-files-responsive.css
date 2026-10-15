@@ -68,13 +68,13 @@
 
 .file-row strong {
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 560;
 }
 
 .file-row small {
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .file-delete {
@@ -83,7 +83,7 @@
   padding: 5px 8px;
   color: var(--yt-danger);
   border-radius: var(--radius-compact);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .file-delete:hover {
@@ -125,7 +125,7 @@
 
 .preview-file-identity strong {
   color: var(--yt-ink);
-  font-size: 15px;
+  font-size: var(--ws-15);
   font-weight: 680;
   line-height: 1.35;
   letter-spacing: -0.01em;
@@ -133,7 +133,7 @@
 
 .preview-file-identity small {
   color: var(--yt-ink-tertiary);
-  font-size: 12px;
+  font-size: var(--ws-13);
   line-height: 1.35;
 }
 
@@ -153,7 +153,7 @@
   gap: 6px;
   padding: 0 11px;
   color: var(--yt-ink-secondary);
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 600;
   line-height: 1;
   text-decoration: none;
@@ -192,7 +192,7 @@
 .document-preview .markdown-content {
   max-width: 760px;
   margin: 0 auto;
-  font-size: 15px;
+  font-size: var(--ws-15);
   line-height: 1.75;
 }
 
@@ -206,7 +206,7 @@
   padding: 14px;
   overflow: auto;
   white-space: pre-wrap;
-  font: 12px/1.6 var(--font-mono);
+  font: var(--ws-13)/1.6 var(--font-mono);
 }
 
 .file-preview img,
@@ -248,13 +248,13 @@
   color: color-mix(in oklch, var(--yt-warning) 60%, var(--yt-ink));
   background: var(--yt-tone-surface);
   background-image: linear-gradient(color-mix(in oklch, var(--yt-warning) 14%, transparent), color-mix(in oklch, var(--yt-warning) 14%, transparent));
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .spreadsheet-preview table {
   min-width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .spreadsheet-preview td {
@@ -276,7 +276,7 @@
   flex-direction: column;
   gap: 8px;
   color: var(--yt-ink-secondary);
-  font-size: 13px;
+  font-size: var(--ws-13);
   text-align: center;
 }
 
@@ -289,7 +289,7 @@
 .preview-unsupported p {
   max-width: 34ch;
   color: var(--yt-ink-tertiary);
-  font-size: 12px;
+  font-size: var(--ws-13);
   line-height: 1.6;
 }
 

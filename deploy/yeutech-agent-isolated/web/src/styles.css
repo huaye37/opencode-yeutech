@@ -1,9 +1,10 @@
 /* Preserved cascade, split at complete rule boundaries for maintainability. */
-@import "./styles/01-legacy.css";
-@import "./styles/02-legacy.css";
-@import "./styles/03-legacy.css";
-@import "./styles/04-legacy.css";
-@import "./styles/05-legacy.css";
-@import "./styles/06-legacy.css";
-@import "./styles/07-legacy.css";
-@import "./styles/08-legacy.css";
+@import "./styles/01-foundation-shell.css";
+@import "./styles/02-navigation-conversation.css";
+@import "./styles/03-conversation-timeline.css";
+@import "./styles/04-markdown-composer.css";
+@import "./styles/05-artifacts-dialogs.css";
+@import "./styles/06-control-files.css";
+@import "./styles/07-files-responsive.css";
+@import "./styles/08-responsive-accessibility.css";
+@import "./styles/workspace-v3.css";

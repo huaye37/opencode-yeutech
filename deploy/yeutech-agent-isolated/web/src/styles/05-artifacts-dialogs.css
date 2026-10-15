@@ -21,18 +21,18 @@
 }
 
 .image-artifacts article footer b {
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .image-artifacts article footer small {
   margin-top: 2px;
   color: var(--yt-ink-secondary);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .image-artifacts article footer a {
   color: var(--yt-accent-ink);
-  font-size: 12px;
+  font-size: var(--ws-13);
   font-weight: 600;
   text-decoration: none;
 }
@@ -89,7 +89,7 @@
 
 .capability-center h2 {
   margin: 4px 0 5px;
-  font-size: 21px;
+  font-size: var(--ws-22);
   font-weight: 680;
   letter-spacing: -0.02em;
 }
@@ -97,7 +97,7 @@
 .capability-center header p {
   margin: 0;
   color: var(--yt-ink-secondary);
-  font-size: 13px;
+  font-size: var(--ws-13);
   line-height: 1.5;
 }
 
@@ -113,7 +113,7 @@
 
 .panel-kicker {
   color: var(--yt-accent-ink);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-weight: 720;
   letter-spacing: 0.12em;
 }
@@ -123,7 +123,7 @@
   height: 34px;
   flex: 0 0 auto;
   color: var(--yt-ink-secondary);
-  font-size: 20px;
+  font-size: var(--ws-17);
   line-height: 1;
 }
 
@@ -138,7 +138,7 @@
 .control-status-strip > span {
   padding: 13px 20px;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .capability-summary span + span,
@@ -149,7 +149,7 @@
 .capability-summary strong {
   margin-right: 5px;
   color: var(--yt-ink);
-  font-size: 18px;
+  font-size: var(--ws-17);
   font-variant-numeric: tabular-nums;
 }
 
@@ -160,11 +160,11 @@
 
 .control-status-strip b {
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .control-status-strip small {
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .control-status-strip .ready b {
@@ -197,13 +197,13 @@
 
 .section-heading h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--ws-15);
   font-weight: 650;
 }
 
 .section-heading span {
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .profile-grid,
@@ -249,13 +249,13 @@
 }
 
 .profile-grid strong {
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .profile-grid code {
   width: fit-content;
   color: var(--yt-accent-ink);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .profile-grid p,
@@ -263,14 +263,14 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .profile-grid details summary,
 .plugin-grid details summary {
   cursor: pointer;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .skill-list {
@@ -296,19 +296,19 @@
   display: block;
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .skill-list p,
 .skill-list small {
   margin-top: 3px;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .skill-list em {
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-style: normal;
 }
 
@@ -358,18 +358,18 @@
 }
 
 .plugin-card-head strong {
-  font-size: 14px;
+  font-size: var(--ws-15);
 }
 
 .plugin-card-head small {
   margin-top: 2px;
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .plugin-card-head em {
   color: var(--yt-ink-secondary);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-style: normal;
   white-space: nowrap;
 }
@@ -378,7 +378,7 @@
   min-height: 32px;
   margin: 0;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
   line-height: 1.5;
 }
 
@@ -393,12 +393,12 @@
   color: var(--yt-accent-ink);
   background: var(--yt-accent-soft);
   border-radius: var(--radius-compact);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .plugin-grid details {
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .plugin-grid details small,
@@ -417,7 +417,7 @@
 .plugin-actions button {
   min-height: 32px;
   padding: 0 11px;
-  font-size: 12px;
+  font-size: var(--ws-13);
   font-weight: 600;
 }
 
@@ -427,7 +427,7 @@
 
 .plugin-locked {
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
   text-align: right;
 }
 
@@ -439,7 +439,7 @@
   gap: 10px;
   padding: 24px;
   color: var(--yt-ink-secondary);
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .panel-state.compact {
@@ -477,7 +477,7 @@
 
 .control-grid h3 {
   margin: 0 0 10px;
-  font-size: 15px;
+  font-size: var(--ws-15);
 }
 
 .control-grid p,
@@ -499,7 +499,7 @@
 }
 
 .control-section-heading > span {
-  font-size: 15px;
+  font-size: var(--ws-15);
   font-weight: 680;
 }
 
@@ -508,7 +508,7 @@
   color: var(--yt-ink-secondary);
   background: var(--yt-state-hover);
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-style: normal;
   white-space: nowrap;
 }
@@ -524,7 +524,7 @@
   min-height: 36px;
   flex: 1;
   padding: 8px 10px;
-  font-size: 14px;
+  font-size: var(--ws-15);
 }
 
 .goal-row {
@@ -546,5 +546,5 @@
   color: var(--yt-ink-secondary);
   background: var(--yt-state-hover);
   border-radius: var(--radius-compact);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }

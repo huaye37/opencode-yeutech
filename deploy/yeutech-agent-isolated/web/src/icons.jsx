@@ -1,5 +1,6 @@
 export function Icon({ name, size = 18 }) {
   const paths = {
+    user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21v-2a7 7 0 0 1 14 0v2" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     folder: <><path d="M3.5 6.5h6l2 2h9v10a2 2 0 0 1-2 2h-15z" /></>,
     chat: <><path d="M5 5h14v11H9l-4 3z" /></>,

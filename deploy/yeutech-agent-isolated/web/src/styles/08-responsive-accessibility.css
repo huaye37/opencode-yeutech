@@ -97,7 +97,7 @@
   }
 
   .workbench-toolbar h1 {
-    font-size: 16px;
+    font-size: var(--ws-15);
   }
 
   .toolbar-actions {
@@ -126,7 +126,7 @@
 
   .user-bubble {
     max-width: 88%;
-    font-size: 15px;
+    font-size: var(--ws-15);
   }
 
   .composer-wrap {

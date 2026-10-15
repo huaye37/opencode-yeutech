@@ -7,6 +7,7 @@ export type AppearanceSite =
   | "router"
   | "codex"
   | "creator"
+  | "assistant"
   | "api"
   | "kaoyan"
   | "worklog"

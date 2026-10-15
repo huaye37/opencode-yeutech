@@ -3,7 +3,7 @@ import { workbenchApi } from "./api.js";
 import { reconcileAfterTerminal } from "./message-scroll.js";
 import { PERMISSION_MODE_STORAGE_KEY, storedProjectionCursor, storeProjectionCursor, timestampPermissions, isImmediateProjectionEvent, isSettledSessionEvent, runtimeEventError, ephemeralTool, isHistoricalConversation, readableStatus } from "./workbench-helpers.js";
 
-export function useProjectionEvents({ selected, messagesBySession, setMessagesBySession, setPermissionMode, setRunning, setStatus, setPermissions, setInsightsBySession, reconcileRef, messageRolesRef, updateRunningSession, activeRuntimeID }) {
+export function useProjectionEvents({ activeRuntimeID, setPermissions, reconcileRef, selected, setMessagesBySession, setPermissionMode, setInsightsBySession, setRunning, updateRunningSession, setStatus, messagesBySession, messageRolesRef }) {
   useEffect(() => {
     if (!activeRuntimeID) {
       setPermissions([]);

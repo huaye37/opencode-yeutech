@@ -4,7 +4,7 @@
   display: block;
   margin-top: 8px;
   overflow-wrap: anywhere;
-  font: 12px/1.5 var(--font-mono);
+  font: var(--ws-13)/1.5 var(--font-mono);
 }
 
 .control-tree,
@@ -27,7 +27,7 @@
 
 .control-tree em {
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .trajectory-list {
@@ -58,7 +58,7 @@
   color: var(--yt-page);
   background: var(--yt-ink-secondary);
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-variant-numeric: tabular-nums;
 }
 
@@ -72,7 +72,7 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .control-advanced {
@@ -83,14 +83,14 @@
 .control-advanced summary {
   padding: 13px 14px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 680;
 }
 
 .control-advanced summary span {
   float: right;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
   font-weight: 500;
 }
 
@@ -166,12 +166,12 @@
 }
 
 .discovery-list b {
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .discovery-list small {
   color: var(--yt-ink-tertiary);
-  font-size: 11px;
+  font-size: var(--ws-13);
 }
 
 .discovery-list article > button {
@@ -180,7 +180,7 @@
   color: var(--yt-accent-ink);
   background: var(--yt-accent-soft);
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: var(--ws-13);
   font-weight: 600;
 }
 
@@ -200,12 +200,12 @@
 
 .discovery-empty b {
   color: var(--yt-ink);
-  font-size: 14px;
+  font-size: var(--ws-15);
 }
 
 .discovery-empty p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .project-dialog {
@@ -220,14 +220,14 @@
   display: grid;
   gap: 8px;
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 650;
 }
 
 .project-dialog-body input {
   min-height: 42px;
   padding: 0 12px;
-  font-size: 15px;
+  font-size: var(--ws-15);
 }
 
 .diff-panel {
@@ -266,7 +266,7 @@
 
 .diff-file > header strong {
   overflow: hidden;
-  font: 12px/1.4 var(--font-mono);
+  font: var(--ws-13)/1.4 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -274,7 +274,7 @@
 .diff-file > header small {
   display: flex;
   gap: 7px;
-  font: 12px/1.4 var(--font-mono);
+  font: var(--ws-13)/1.4 var(--font-mono);
 }
 
 .diff-file > header small b {
@@ -289,7 +289,7 @@
 .diff-status {
   padding: 3px 8px;
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: var(--ws-13);
   font-weight: 700;
 }
 
@@ -312,7 +312,7 @@
   max-height: 52dvh;
   margin: 0;
   overflow: auto;
-  font: 12px/1.55 var(--font-mono);
+  font: var(--ws-13)/1.55 var(--font-mono);
 }
 
 .diff-file pre span {
@@ -377,7 +377,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 650;
 }
 
@@ -389,7 +389,7 @@
 
 .file-space-picker small {
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .file-toolbar {
@@ -447,7 +447,7 @@
   padding: 0 6px;
   color: var(--yt-accent-ink);
   border-radius: var(--radius-compact);
-  font-size: 13px;
+  font-size: var(--ws-13);
   white-space: nowrap;
 }
 
@@ -456,7 +456,7 @@
   align-items: center;
   gap: 6px;
   color: var(--yt-ink-secondary);
-  font-size: 12px;
+  font-size: var(--ws-13);
   white-space: nowrap;
 }
 
@@ -470,7 +470,7 @@
   align-items: center;
   gap: 6px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--ws-13);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -479,7 +479,7 @@
   padding: 8px 18px;
   color: var(--yt-danger);
   background: color-mix(in oklch, var(--yt-danger) 10%, transparent);
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .file-findbar {
@@ -510,19 +510,19 @@
   outline: 0;
   background: transparent;
   color: var(--yt-ink);
-  font-size: 13px;
+  font-size: var(--ws-13);
 }
 
 .file-findbar select {
   min-height: 34px;
   max-width: 120px;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: var(--ws-13);
 }
 
 .file-findbar > span {
   color: var(--yt-ink-tertiary);
-  font-size: 12px;
+  font-size: var(--ws-13);
   white-space: nowrap;
 }
 
