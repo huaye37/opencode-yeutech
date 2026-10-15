@@ -246,4 +246,3 @@ export function Conversation({ session, project, messages, permissions, insight,
     </div>
   </section>;
 }
-

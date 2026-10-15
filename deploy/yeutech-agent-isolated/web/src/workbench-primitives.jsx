@@ -24,4 +24,3 @@ export function PanelResizer({ className, label, controls, value, min, max, keyb
   };
   return <div className={`panel-resizer ${className}`} role="separator" tabIndex="0" aria-label={label} aria-controls={controls} aria-orientation="vertical" aria-valuemin={min} aria-valuemax={max} aria-valuenow={Math.round(value)} onPointerDown={onPointerDown} onKeyDown={onKeyDown}><span /></div>;
 }
-

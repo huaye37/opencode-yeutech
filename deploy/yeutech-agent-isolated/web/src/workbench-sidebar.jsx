@@ -60,4 +60,3 @@ export function Sidebar({ projects, conversations, standaloneSessions, selected,
     })}{normalizedQuery && !projects.filter((item) => item.registered !== false).some((project) => matches(project.name) || conversations.some((item) => item.projectId === project.id && matches(item.title))) && !standaloneSessions.some((item) => matches(item.title)) ? <div className="search-empty"><p>没有匹配的会话或项目</p><button onClick={() => setQuery("")}>清除搜索</button></div> : null}</div></> : null}
   </div></aside>;
 }
-

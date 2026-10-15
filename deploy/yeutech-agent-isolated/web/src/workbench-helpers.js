@@ -177,4 +177,3 @@ export function readableStatus(state) {
   if (code === "auth_unavailable") return "CLIProxyAPI 已连通，但当前模型账号授权已失效。";
   return state.message || "Agent 正在执行";
 }
-
