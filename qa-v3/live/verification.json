@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-16",
+  "browser": "logged-in Chrome via CUA",
+  "image": "yeutech-agent:v3-20261016",
+  "health": "running healthy restarts=0",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900,
+      "horizontalOverflow": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false
+    }
+  ],
+  "consoleErrors": [],
+  "consoleWarnings": [],
+  "readOnlyFlows": [
+    "existing session history",
+    "account menu open/Escape close",
+    "mobile conversation to directory"
+  ],
+  "untested": [
+    "new AI generation",
+    "mutating operations",
+    "full functional regression",
+    "mobile Safari"
+  ]
+}
