@@ -97,3 +97,5 @@ Browser plugin/skill not available；`agent-browser` CLI也未安装。按fronte
 - 验证：isolated服务`npm test`231/231（未在上游仓库根运行测试）；定制web production build及最终合同检查通过；canonical同步仅target本树web/src/design，无合同diff。
 - Browser plugin not available，Playwright+Chrome使用本地mock18141、production preview18149。1440/2560/390×light/dark六组：账户首字母、收起后目录展开与焦点、文件/任务面板焦点、返回目录、无横溢/pageerror均通过；截图`/tmp/yeutech-oct17-qa/agent-*.png`。实际生产身份与线上路径仍待主控发布后检查。
 - 没有修改上游packages/app、会话持久数据或执行协议；没有push、NAS部署、代理/现有服务重启、考研操作。本次临时本地mock不是生产服务。
+
+- 本轮补验：1440桌面与390×844手机，各覆盖radius0/alpha0、alpha100、减透明和高对比（全部减动态），共8组，页面/任务面板无横溢，圆角0与无blur状态正确。仅本地production preview+fixture，不代表线上。新截图、结果、复现脚本及测试/构建日志在 `regression-20261017/`，未覆盖旧验收记录。
