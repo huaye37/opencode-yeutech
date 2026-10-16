@@ -958,7 +958,7 @@ test("exposes safe model capabilities and blocks incomplete models before OpenCo
   const modelConfigPath = path.join(configRoot, "opencode.json");
   await writeFile(modelConfigPath, JSON.stringify({ provider: { yeutech: { models: { "ready-model": {} } } } }));
   const catalog = http.createServer((request, response) => {
-    assert.equal(request.url, "/v1/model-capabilities");
+    assert.equal(request.url, "/v1/model-capabilities?schema=2");
     assert.equal(request.headers.authorization, "Bearer catalog-secret");
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ data: [

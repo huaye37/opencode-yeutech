@@ -17,10 +17,11 @@ const CAPABILITY_FIELDS = new Set([
   "context_length", "max_input_tokens", "max_output_tokens", "supported_parameters",
   "supported_input_modalities", "supported_output_modalities", "supported_workloads", "thinking", "supports_web_search",
   "available", "selectable", "unavailable_reason", "capability_status", "service_tiers",
+  "token_limits_applicable", "availability_basis", "verification_status",
 ]);
 const CAPABILITY_STATUSES = new Set(["incomplete", "complete", "ready"]);
 const CAPABILITY_MODALITIES = new Set(["text", "image", "audio", "video"]);
-const CAPABILITY_WORKLOADS = new Set(["conversation", "agent", "review", "image_generation"]);
+const CAPABILITY_WORKLOADS = new Set(["conversation", "agent", "review", "image_generation", "video_generation", "speech_generation"]);
 const UNAVAILABLE_REASONS = new Set(["auth_unavailable", "model_not_found", "credits_required", "cooldown"]);
 const UNAVAILABLE_REASON_MESSAGES = {
   auth_unavailable: "当前没有可用的登录授权或 API 凭据",
@@ -132,6 +133,9 @@ export function validateCapabilityCatalog(payload) {
     }
     validateThinking(entry.thinking, index);
     validateServiceTiers(entry.service_tiers, index);
+    if (entry.token_limits_applicable !== undefined && typeof entry.token_limits_applicable !== "boolean") throw capabilityError(`data[${index}].token_limits_applicable`, "must be a boolean");
+    if (entry.availability_basis !== undefined && entry.availability_basis !== "registered_route_state") throw capabilityError(`data[${index}].availability_basis`, "must describe registered route state");
+    if (entry.verification_status !== undefined && entry.verification_status !== "not_verified_by_catalog") throw capabilityError(`data[${index}].verification_status`, "cannot claim live verification from a catalog");
     if (entry.supports_web_search !== undefined && typeof entry.supports_web_search !== "boolean") {
       throw capabilityError(`data[${index}].supports_web_search`, "must be a boolean");
     }
@@ -151,8 +155,9 @@ export function validateCapabilityCatalog(payload) {
       const required = ["context_length", "max_output_tokens", "supported_input_modalities", "supported_output_modalities"];
       const missing = required.find((field) => entry[field] === undefined);
       if (missing) throw capabilityError(`data[${index}].${missing}`, "is required when selectable is true");
-      if (entry.context_length < 1) throw capabilityError(`data[${index}].context_length`, "must be positive when selectable is true");
-      if (entry.max_output_tokens < 1) throw capabilityError(`data[${index}].max_output_tokens`, "must be positive when selectable is true");
+      const mediaOnly = entry.token_limits_applicable === false && !entry.supported_output_modalities.includes("text") && entry.supported_workloads?.length > 0 && entry.supported_workloads.every(value => ["image_generation", "video_generation", "speech_generation"].includes(value));
+      if (!mediaOnly && entry.context_length < 1) throw capabilityError(`data[${index}].context_length`, "must be positive when selectable is true");
+      if (!mediaOnly && entry.max_output_tokens < 1) throw capabilityError(`data[${index}].max_output_tokens`, "must be positive when selectable is true");
       if (entry.supported_input_modalities.length === 0) throw capabilityError(`data[${index}].supported_input_modalities`, "must not be empty when selectable is true");
       if (entry.supported_output_modalities.length === 0) throw capabilityError(`data[${index}].supported_output_modalities`, "must not be empty when selectable is true");
     }
@@ -249,7 +254,7 @@ export function selectDefaultModel(models, preferredID) {
 }
 
 export async function fetchModelCatalog({ baseURL, token, signal, timeoutMs = 5_000 }) {
-  const response = await fetch(new URL("/v1/model-capabilities", baseURL), {
+  const response = await fetch(new URL("/v1/model-capabilities?schema=2", baseURL), {
     headers: { authorization: `Bearer ${token}` },
     signal: signal ?? AbortSignal.timeout(timeoutMs),
   });
