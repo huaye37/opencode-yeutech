@@ -1,0 +1,28 @@
+PASS 1440x900 light: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":856}
+PASS 1440x900 dark: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":856}
+PASS 2560x1440 light: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":1408}
+PASS 2560x1440 dark: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":1408}
+PASS 390x844 light: page/layout/type audit {"overflow":false,"fonts":["17px","15px","34px","22px","13px"],"wallpaper":"block","stage":"none","height":1140}
+PASS mobile detail light: page/layout/type audit {"overflow":false,"fonts":["17px","15px","34px","13px","0px"],"wallpaper":"block","stage":"none","height":1140}
+PASS mobile light: bottom tabs directory / conversation / task dialog
+PASS mobile file detail light: page/layout/type audit {"overflow":false,"fonts":["17px","15px","34px","13px","0px"],"wallpaper":"block","stage":"none","height":1140}
+PASS mobile light: directory -> conversation -> files -> return
+PASS 390x844 dark: page/layout/type audit {"overflow":false,"fonts":["17px","15px","34px","22px","13px"],"wallpaper":"block","stage":"none","height":1140}
+PASS mobile detail dark: page/layout/type audit {"overflow":false,"fonts":["17px","15px","34px","13px","0px"],"wallpaper":"block","stage":"none","height":1140}
+PASS mobile dark: bottom tabs directory / conversation / task dialog
+PASS mobile file detail dark: page/layout/type audit {"overflow":false,"fonts":["17px","15px","34px","13px","0px"],"wallpaper":"block","stage":"none","height":1140}
+PASS mobile dark: directory -> conversation -> files -> return
+PASS session/project search and shared directory
+PASS session rename/Fork/delete entries preserved
+PASS Ultra / Ultrafast independent persistence real local mock preference API; reload readback
+PASS capabilities, skills/profiles and plugin entry
+PASS control center / goal create / advanced budget & context
+PASS files search / Markdown preview / expand & restore / attach
+PASS Markdown export preserved
+PASS focus, sidebar collapse and keyboard resizing
+PASS portal brand/account/settings and keyboard menu
+PASS appearance square-min: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":856}
+PASS accessibility square-min: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":856}
+PASS appearance max: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":856}
+PASS accessibility max: page/layout/type audit {"overflow":false,"fonts":["17px","13px","15px","34px","22px"],"wallpaper":"block","stage":"none","height":856}
+PASS no console or page errors

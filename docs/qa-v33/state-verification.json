@@ -1,0 +1,18 @@
+{
+  "checks": [
+    {
+      "scenario": "empty",
+      "titleAndNavRetained": true,
+      "appExceptions": [],
+      "data": "local browser fixture only",
+      "expectedHttpError": null
+    },
+    {
+      "scenario": "failed",
+      "titleAndNavRetained": true,
+      "appExceptions": [],
+      "data": "local browser fixture only",
+      "expectedHttpError": 503
+    }
+  ]
+}

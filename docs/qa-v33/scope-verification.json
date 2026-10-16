@@ -1,0 +1,112 @@
+{
+  "baseline": "6cb3667e8",
+  "modifiedSource": [
+    "deploy/yeutech-agent-isolated/web/src/App.jsx",
+    "deploy/yeutech-agent-isolated/web/src/styles.css",
+    "deploy/yeutech-agent-isolated/web/src/workbench-header.jsx",
+    "deploy/yeutech-agent-isolated/web/src/workbench-sidebar.jsx",
+    "deploy/yeutech-agent-isolated/web/src/styles/workspace-v33.css"
+  ],
+  "changed": [
+    "deploy/yeutech-agent-isolated/web/src/App.jsx",
+    "deploy/yeutech-agent-isolated/web/src/styles.css",
+    "deploy/yeutech-agent-isolated/web/src/workbench-header.jsx",
+    "deploy/yeutech-agent-isolated/web/src/workbench-sidebar.jsx"
+  ],
+  "preservation": [
+    {
+      "file": "api.js",
+      "byteIdenticalToV32": true,
+      "sha256": "4a285f8ebda739437e0acfde800b42a28a603c1f1d9b4466bf58cf6694dc365f"
+    },
+    {
+      "file": "attachment-state.js",
+      "byteIdenticalToV32": true,
+      "sha256": "1ccd4bc16e02541beab9b44981abf81f8c3031cc4cf583ed939c0f57b7b22e9e"
+    },
+    {
+      "file": "markdown-parser.js",
+      "byteIdenticalToV32": true,
+      "sha256": "e9e2f526c90825eee0b5157befa284c6b91d0202a622938c8554a87bd6f2c194"
+    },
+    {
+      "file": "message-projection.js",
+      "byteIdenticalToV32": true,
+      "sha256": "f52735df4070bdb3a70bfa5298ab206ffdca8b14a95720001613d2e9ac5a60d8"
+    },
+    {
+      "file": "message-scroll.js",
+      "byteIdenticalToV32": true,
+      "sha256": "6b273697610f4fddd100e8593a724a609a34e099e5ec32355043de1e85dfdfff"
+    },
+    {
+      "file": "project-file-reference.js",
+      "byteIdenticalToV32": true,
+      "sha256": "c9c3b4cfcdfd0c16f465ad2c56bb49a09d0da1117087b0214fa501daed28f976"
+    },
+    {
+      "file": "session-ordering.js",
+      "byteIdenticalToV32": true,
+      "sha256": "6fa2c39f897fe095b2635bc3b0dc187f8f781c8242e63dddc0bea73e4bf03d43"
+    },
+    {
+      "file": "portal-appearance.js",
+      "byteIdenticalToV32": true,
+      "sha256": "c0d64366498763838240d92e1bd2fec5ccd24c654a863acb23ec4a691903e5f8"
+    },
+    {
+      "file": "workbench-bootstrap.js",
+      "byteIdenticalToV32": true,
+      "sha256": "770b7f40e662b35487d4224a2972b07045d56c1f112425394f74298e38214c5e"
+    },
+    {
+      "file": "use-projection-events.js",
+      "byteIdenticalToV32": true,
+      "sha256": "5f6c703223669590a5f6bd9372d1cee79752376432480a5a9f960bba66369408"
+    },
+    {
+      "file": "workbench-actions.js",
+      "byteIdenticalToV32": true,
+      "sha256": "468e8fe0bffa202cd12543c65ffbb2bfbb27983d69bef9620501da90046db574"
+    },
+    {
+      "file": "workbench-conversation.jsx",
+      "byteIdenticalToV32": true,
+      "sha256": "9ec9a2a55ed25fb8afbdd03902dc427bf580aa7854f8cf5b50fe52b0431126c5"
+    },
+    {
+      "file": "workbench-dialogs.jsx",
+      "byteIdenticalToV32": true,
+      "sha256": "1cb8a164dc9de3d238df5bd46d59a2478b9ee44c4e6195715e4883e5dc1a7740"
+    },
+    {
+      "file": "workbench-files.jsx",
+      "byteIdenticalToV32": true,
+      "sha256": "85a053a0c6c2ea85cb38505bfedabd19a5954c9c12a19936bbb53b4e5325fb4b"
+    },
+    {
+      "file": "workbench-timeline.jsx",
+      "byteIdenticalToV32": true,
+      "sha256": "e545cfd740d862f653bfe16cee81a44a62b20251c5182388e8b654e8f11674fd"
+    }
+  ],
+  "contracts": [
+    {
+      "file": "yeutech-material-contract.css",
+      "canonicalByteIdentical": true,
+      "sha256": "bdcc88eebe68f537c8b4612b2f71319199c58fed484290f82f1ad8b926df5dba"
+    },
+    {
+      "file": "yeutech-material-contract.mjs",
+      "canonicalByteIdentical": true,
+      "sha256": "9339a26353b05cc9c2f85acf4e3dddc06680e5be19891df5076053a07b5f6715"
+    },
+    {
+      "file": "yeutech-material-contract.d.mts",
+      "canonicalByteIdentical": true,
+      "sha256": "cf17586c80fcbf064547ddc329dfd9de899d1ce34e081cf03027cc047a890106"
+    }
+  ],
+  "originalTestFilesByteIdentical": 40,
+  "modifiedCodeFilesUnder600Lines": true
+}
