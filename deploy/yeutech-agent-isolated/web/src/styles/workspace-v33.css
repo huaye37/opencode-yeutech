@@ -1,5 +1,5 @@
 /* v3.3 HomeWorkspaceShell geometry; canonical material definitions are read-only.
-   Header=chrome; directory/conversation=sibling surface; inner rows=material/control. */
+   Header=chrome; directory/conversation=sibling surface; inner content=flat; interactive elements=control. */
 .workspace-v33::before { display: block; filter: blur(var(--yt-blur)) saturate(40%); transform: scale(1.04); }
 .workspace-v33 { overflow: clip; }
 .workspace-v33 .workspace { height: auto; min-height: 0; max-width: 2400px; padding: 32px; gap: 0; }
@@ -50,13 +50,6 @@
 .workspace-v3 .messages { padding: 24px 32px 16px; }
 .workspace-v3 .composer-wrap { padding: 12px 24px 24px; background: transparent; }
 .workspace-v3 .composer { background: var(--yt-layer-control); border: 1px solid var(--yt-edge); box-shadow: var(--yt-shadow-control); }
-.workspace-v3 .user-bubble { background: var(--yt-layer-material); }
-.workspace-v3 :is(.timeline-tool, .reasoning-block, .control-card, .capability-card, .plugin-card, .image-artifacts article) {
-  background: var(--yt-layer-material); border: 1px solid var(--yt-edge); border-radius: var(--radius-material);
-}
-.workspace-v3 :is(.control-card, .capability-card, .plugin-card) { padding: 20px; }
-.workspace-v3 .permission-card { padding: 20px; background: var(--yt-layer-material); border: 1px solid var(--yt-edge); border-radius: var(--radius-material); }
-.workspace-v3 .file-preview { background: var(--yt-layer-material); }
 .workspace-v3 .file-panel { box-shadow: var(--yt-shadow-overlay); }
 .workspace-v3 .file-entry { border-radius: var(--radius-control); }
 
@@ -84,7 +77,6 @@
   .workspace-v33 .conversation-header { padding: 8px 12px; }
   .workspace-v33 .messages { padding: 20px; }
   .workspace-v33 .composer-wrap { padding: 8px 8px 20px; }
-  .workspace-v33 .permission-card { padding: 20px; }
   .workspace-v33 .file-layer:not(.file-expanded) { position: fixed; inset: 68px 16px 16px; padding: 0; }
   .workspace-v33 .file-layer .file-panel { background: var(--yt-layer-overlay); border: 1px solid var(--yt-edge); border-radius: var(--radius-surface); -webkit-backdrop-filter: var(--yt-filter-overlay); backdrop-filter: var(--yt-filter-overlay); }
 }

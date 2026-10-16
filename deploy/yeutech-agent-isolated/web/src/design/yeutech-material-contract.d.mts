@@ -5,7 +5,6 @@ export type AppearanceSite =
   | "media"
   | "print"
   | "router"
-  | "codex"
   | "creator"
   | "assistant"
   | "api"

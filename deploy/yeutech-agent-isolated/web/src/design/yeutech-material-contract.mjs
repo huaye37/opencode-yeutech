@@ -17,7 +17,6 @@ export const APPEARANCE_SITES = Object.freeze([
   "media",
   "print",
   "router",
-  "codex",
   "creator",
   "agent",
   "assistant",

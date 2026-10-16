@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 import { sortSessionsByUpdatedAt } from "./session-ordering.js";
 import { STANDALONE_EXPANDED_STORAGE_KEY, storedBoolean, isHistoricalConversation } from "./workbench-helpers.js";
@@ -7,6 +7,23 @@ import { formatTime } from "./workbench-timeline.jsx";
 export function RowMenu({ label, children }) {
   const [open, setOpen] = useState(false);
   const root = useRef(null);
+  const menu = useRef(null);
+  useLayoutEffect(() => {
+    if (!open || !menu.current) return;
+    // The top layer escapes the directory's scroll clipping without moving actions.
+    menu.current.showPopover();
+    const place = () => {
+      const anchor = root.current.getBoundingClientRect();
+      const bounds = menu.current.getBoundingClientRect();
+      const left = Math.max(8, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 8));
+      const top = anchor.bottom + bounds.height + 12 <= window.innerHeight ? anchor.bottom + 4 : Math.max(8, anchor.top - bounds.height - 4);
+      Object.assign(menu.current.style, { left: `${left}px`, top: `${top}px` });
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); document.removeEventListener("scroll", place, true); };
+  }, [open]);
   useEffect(() => {
     if (!open) return undefined;
     const close = (event) => {
@@ -16,7 +33,7 @@ export function RowMenu({ label, children }) {
     window.addEventListener("keydown", close);
     return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("keydown", close); };
   }, [open]);
-  return <div className="row-menu" ref={root}><button className="row-menu-trigger" aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}><Icon name="more" size={16} /></button>{open ? <div className="row-menu-popover" role="menu" onClick={() => setOpen(false)}>{children}</div> : null}</div>;
+  return <div className="row-menu" ref={root}><button className="row-menu-trigger" aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}><Icon name="more" size={16} /></button>{open ? <div className="row-menu-popover" role="menu" popover="manual" ref={menu} onClick={() => setOpen(false)}>{children}</div> : null}</div>;
 }
 
 export function SessionRow({ session, selected, running, runtimeAvailable, reasoningLabel, onSelect, onRename, onDelete, onFork }) {
