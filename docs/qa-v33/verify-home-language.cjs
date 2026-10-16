@@ -21,6 +21,7 @@ const { installFixtures } = require('../../qa-v3/visual-fixtures.cjs');
           return [];
         });
         return {
+          wallpaper: { filter: getComputedStyle(document.querySelector(".workspace-v33"), "::before").filter, transform: getComputedStyle(document.querySelector(".workspace-v33"), "::before").transform, blur: getComputedStyle(document.documentElement).getPropertyValue("--yt-blur").trim() },
           width: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth, nested,
           header: { height: document.querySelector('.workbench-identity').getBoundingClientRect().height, padding: css('.workbench-identity').paddingInline, shadow: css('.workbench-identity').boxShadow },
           main: { maxWidth: css('.workspace').maxWidth, padding: css('.workspace').paddingTop },
@@ -33,6 +34,8 @@ const { installFixtures } = require('../../qa-v3/visual-fixtures.cjs');
           pageHeadings: document.querySelectorAll('h1').length,
         };
       });
+      assert.equal(audit.wallpaper.filter, `blur(${audit.wallpaper.blur}) saturate(0.4)`);
+      assert.equal(audit.wallpaper.transform, "matrix(1.04, 0, 0, 1.04, 0, 0)");
       assert.equal(audit.overflow, false);
       assert.deepEqual(audit.nested, []);
       assert.equal(audit.header.height, width === 390 ? 52 : 56);
@@ -57,7 +60,11 @@ const { installFixtures } = require('../../qa-v3/visual-fixtures.cjs');
       assert.equal(await page.getByRole('button', { name: '搜索会话与项目 (⌘K)', exact: true }).evaluate(e => e === document.activeElement), true);
       await page.keyboard.press('Control+k');
       await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === '搜索会话与项目');
-      checks.push({ ...audit, searchTriggerAndShortcutAndEscape: true });
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
+      const reducedWallpaperFilter = await page.evaluate(() => getComputedStyle(document.querySelector('.workspace-v33'), '::before').filter);
+      assert.equal(reducedWallpaperFilter, 'none');
+      checks.push({ ...audit, reducedWallpaperFilter, searchTriggerAndShortcutAndEscape: true });
       await page.close();
     }
     fs.writeFileSync(__dirname + '/home-language-verification.json', JSON.stringify({ checks }, null, 2) + '\n');

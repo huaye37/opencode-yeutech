@@ -81,3 +81,10 @@ Browser plugin/skill not available；`agent-browser` CLI也未安装。按fronte
 
 ## 未验证
 真实生产登录/权限角色、真实模型/项目写入、NAS、真实断线重连、所有Office/PDF/图片内容、真机Safari与发布后资源/缓存均未验；原实现保留不等于这些验收已通过。没有部署、线上完成或作者采纳声明。
+
+## 补充核查：PageShell 壁纸（2026-10-16）
+- 复核门户`primitives.module.css`第2、57行发现：本服务首版只恢复了合同壁纸显示，缺少PageShell专有的滤镜/缩放覆写。
+- 仅在`workspace-v33.css`的page伪元素补齐`filter: blur(var(--yt-blur)) saturate(40%)`、`transform: scale(1.04)`，并在`prefers-reduced-transparency:reduce`下设`filter:none`；没有修改合同或业务。
+- 1440/2560/390实测默认`blur(14px) saturate(0.4)`、`matrix(1.04,0,0,1.04,0,0)`；减少透明度均为`none`。证据在`home-language-verification.json`的wallpaper/reducedWallpaperFilter字段。
+- 重建production并刷新全部主题/视口及边界截图、原浏览器交互回归通过；此补充未改业务，不重复跑不相干服务测试。
+- 账户菜单与辅助栏外观链接均已是`https://yeutech.cn/settings/?site=agent`，无需修改。

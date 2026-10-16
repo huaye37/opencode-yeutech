@@ -1,6 +1,11 @@
 {
   "checks": [
     {
+      "wallpaper": {
+        "filter": "blur(14px) saturate(0.4)",
+        "transform": "matrix(1.04, 0, 0, 1.04, 0, 0)",
+        "blur": "14px"
+      },
       "width": 1440,
       "overflow": false,
       "nested": [],
@@ -46,9 +51,15 @@
         "blur": "blur(14px) saturate(1.6)"
       },
       "pageHeadings": 1,
+      "reducedWallpaperFilter": "none",
       "searchTriggerAndShortcutAndEscape": true
     },
     {
+      "wallpaper": {
+        "filter": "blur(14px) saturate(0.4)",
+        "transform": "matrix(1.04, 0, 0, 1.04, 0, 0)",
+        "blur": "14px"
+      },
       "width": 2560,
       "overflow": false,
       "nested": [],
@@ -94,9 +105,15 @@
         "blur": "blur(14px) saturate(1.6)"
       },
       "pageHeadings": 1,
+      "reducedWallpaperFilter": "none",
       "searchTriggerAndShortcutAndEscape": true
     },
     {
+      "wallpaper": {
+        "filter": "blur(14px) saturate(0.4)",
+        "transform": "matrix(1.04, 0, 0, 1.04, 0, 0)",
+        "blur": "14px"
+      },
       "width": 390,
       "overflow": false,
       "nested": [],
@@ -142,6 +159,7 @@
         "blur": "blur(14px) saturate(1.6)"
       },
       "pageHeadings": 1,
+      "reducedWallpaperFilter": "none",
       "searchTriggerAndShortcutAndEscape": true
     }
   ]

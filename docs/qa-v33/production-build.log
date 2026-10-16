@@ -8,12 +8,12 @@ transforming...
 rendering chunks...
 computing gzip size...
 dist/index.html                            0.46 kB │ gzip:   0.31 kB
-dist/assets/index-Dui3xKS0.css           104.88 kB │ gzip:  17.35 kB
+dist/assets/index-CtvfWGgl.css           105.02 kB │ gzip:  17.39 kB
 dist/assets/browser-BIZEB9Ly.js            5.41 kB │ gzip:   2.75 kB
-dist/assets/index-DrDN63dM.js            367.35 kB │ gzip: 112.79 kB
-dist/assets/mammoth.browser-C2hkL7Cm.js  491.24 kB │ gzip: 118.57 kB
+dist/assets/index-DPhvSX6P.js            367.35 kB │ gzip: 112.78 kB
+dist/assets/mammoth.browser-BBspnOuj.js  491.24 kB │ gzip: 118.57 kB
 
-✓ built in 122ms
+✓ built in 112ms
 
 > @yeutech/agent-workbench-web@0.1.0 postbuild
 > node verify-material-build.mjs

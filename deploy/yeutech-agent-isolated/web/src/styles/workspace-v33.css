@@ -1,6 +1,6 @@
 /* v3.3 HomeWorkspaceShell geometry; canonical material definitions are read-only.
    Header=chrome; directory/conversation=sibling surface; inner rows=material/control. */
-.workspace-v33::before { display: block; }
+.workspace-v33::before { display: block; filter: blur(var(--yt-blur)) saturate(40%); transform: scale(1.04); }
 .workspace-v33 { overflow: clip; }
 .workspace-v33 .workspace { height: auto; min-height: 0; max-width: 2400px; padding: 32px; gap: 0; }
 .workspace-v33 .workbench-identity { position: sticky; top: 0; z-index: 30; min-height: 56px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--yt-edge); background: var(--yt-layer-chrome); -webkit-backdrop-filter: var(--yt-filter-chrome); backdrop-filter: var(--yt-filter-chrome); box-shadow: none; }
@@ -108,3 +108,6 @@
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .workspace-v33 :is(.workbench-identity, .sidebar, .conversation, .file-layer .file-panel) { background: var(--yt-layer-page); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* Match the portal PageShell wallpaper accessibility override exactly. */
+@media (prefers-reduced-transparency: reduce) { .workspace-v33::before { filter: none; } }
