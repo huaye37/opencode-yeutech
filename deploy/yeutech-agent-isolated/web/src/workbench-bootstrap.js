@@ -2,7 +2,7 @@ import { migrationApi, workbenchApi } from "./api.js";
 import { sortSessionsByUpdatedAt } from "./session-ordering.js";
 import { isHistoricalConversation, readableStatus } from "./workbench-helpers.js";
 
-export function createWorkbenchBootstrap({ refreshVersion, projects, conversations, standaloneSessions, setBootstrapping, setBootstrapError, setModels, setModelReload, setModel, setReasoningPreferences, setServiceTierPreferences, selectedRef, cachedSelection, setProjects, setConversations, setStandaloneSessions, setRuntimeSessions, setRunningSessionIds, setRuntimeEnabledSessions, setSelected, setSelectedProject, setExpandedProjects, setRunning, setStatus }) {
+export function createWorkbenchBootstrap({ refreshVersion, projects, conversations, standaloneSessions, setBootstrapping, setBootstrapError, setPortalUser, setModels, setModelReload, setModel, setReasoningPreferences, setServiceTierPreferences, selectedRef, cachedSelection, setProjects, setConversations, setStandaloneSessions, setRuntimeSessions, setRunningSessionIds, setRuntimeEnabledSessions, setSelected, setSelectedProject, setExpandedProjects, setRunning, setStatus }) {
   const refresh = async () => {
     const currentRefresh = ++refreshVersion.current;
     if (!projects.length && !conversations.length && !standaloneSessions.length) setBootstrapping(true);
@@ -11,6 +11,7 @@ export function createWorkbenchBootstrap({ refreshVersion, projects, conversatio
     try {
       const bootstrap = await workbenchApi.bootstrap();
       if (currentRefresh !== refreshVersion.current) return;
+      setPortalUser?.(bootstrap.user || null);
       const remoteSessions = Array.isArray(bootstrap.sessions) ? bootstrap.sessions : [];
       const workspaceProjects = Array.isArray(bootstrap.projects) ? bootstrap.projects : [];
       const states = bootstrap.states || {};

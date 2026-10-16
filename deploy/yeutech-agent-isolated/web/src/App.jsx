@@ -19,6 +19,7 @@ export function App() {
   const cachedSelection = storedSelectionContext();
   const cachedFilePanel = storedFilePanelState(cachedSelection.sessionId);
   const [projects, setProjects] = useState([]);
+  const [portalUser, setPortalUser] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [standaloneSessions, setStandaloneSessions] = useState([]);
   const [selected, setSelected] = useState(storedSelection);
@@ -166,7 +167,7 @@ export function App() {
     setFilePanelWidth((current) => clamp(current, FILE_PANEL_MIN_WIDTH, filePanelMaxWidth()));
   }, [sidebarWidth, sidebarCollapsed, viewportWidth]);
 
-  const { refresh } = createWorkbenchBootstrap({ refreshVersion, projects, conversations, standaloneSessions, setBootstrapping, setBootstrapError, setModels, setModelReload, setModel, setReasoningPreferences, setServiceTierPreferences, selectedRef, cachedSelection, setProjects, setConversations, setStandaloneSessions, setRuntimeSessions, setRunningSessionIds, setRuntimeEnabledSessions, setSelected, setSelectedProject, setExpandedProjects, setRunning, setStatus });
+  const { refresh } = createWorkbenchBootstrap({ refreshVersion, projects, conversations, standaloneSessions, setBootstrapping, setBootstrapError, setPortalUser, setModels, setModelReload, setModel, setReasoningPreferences, setServiceTierPreferences, selectedRef, cachedSelection, setProjects, setConversations, setStandaloneSessions, setRuntimeSessions, setRunningSessionIds, setRuntimeEnabledSessions, setSelected, setSelectedProject, setExpandedProjects, setRunning, setStatus });
   useEffect(() => { void refresh(); }, []);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
   useEffect(() => {
@@ -283,11 +284,16 @@ export function App() {
   const { loadOlder, createSession, createProjectSession, createProject, registerProject, selectSession, send, stop, replyPermission, changePermissionMode, selectProject, renameProject, deleteProject, renameSession, deleteSession, forkSession, openDiff, openProjectFiles, openCurrentFiles, openCapabilities, openPlugins, changePlugin, panoramaAction, openControl, attachFile, removeAttachment, removeDeletedAttachment, exportConversation } = createWorkbenchActions({ messageCursors, selected, loadingOlder, setLoadingOlder, bufferedOlderMessagesRef, setMessagesBySession, setMessageCursors, pollVersion, model, setStandaloneSessions, setSelected, setSelectedProject, setFilePanelOpen, setRunning, updateRunningSession, setStopping, setStatus, setConversations, setExpandedProjects, setProjectMutationBusy, setProjectMutationError, setProjects, setProjectDialogOpen, setDiscoveryBusyProjectId, setDiscoveryError, runningSessionIds, conversations, session, runtimeSessions, setRuntimeSessions, setReasoningPreferences, setServiceTierPreferences, project, setRunningSessionIds, preserveAttachmentsOnNextSelection, setAttachments, setRuntimeEnabledSessions, permissionMode, reasoningEffort, serviceTier, stopping, reconcileRef, setPermissions, activeRuntimeID, setPermissionMode, standaloneSessions, setDiffOpen, setDiffLoading, setDiffError, setDiffItems, setFilePanelProjectId, setFilePanelRequest, setSidebarOpen, setFocusMode, setCapabilityOpen, setCapabilityLoading, setCapabilityError, setProfiles, setSkills, setSkillReport, setPluginOpen, setPluginLoading, setPluginError, setPlugins, setInsightsBySession, setControlOpen, messages });
   const selectableModelCount = models.filter((item) => item.selectable).length;
   const reloadLabel = modelReload.status === "pending-idle" ? " · 目录更新待空闲加载" : modelReload.status === "reloading" ? " · 正在安全加载" : "";
-  const searchDirectory = () => { setSidebarCollapsed(false); setSidebarOpen(true); window.requestAnimationFrame(() => document.querySelector('.search input')?.focus()); };
+  const focusPanel = (selector) => window.requestAnimationFrame(() => {
+    const target = document.querySelector(selector);
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: "nearest", behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
+  });
+  const searchDirectory = () => { setFocusMode(false); setFilePanelOpen(false); setSidebarCollapsed(false); setSidebarOpen(true); focusPanel('.search input'); };
   return <div className="portal-shell yt-page workspace-v3 workspace-v33">
-    <WorkbenchHeader loading={bootstrapping} onRefresh={refresh} onSearch={searchDirectory} />
+    <WorkbenchHeader user={portalUser} loading={bootstrapping} onRefresh={refresh} onSearch={searchDirectory} />
     <main className={`workspace ${focusMode ? "focus-mode" : ""}`}>
-      <WorkbenchTabs directoryOpen={sidebarOpen} filesOpen={filePanelOpen} onDirectory={() => { setFilePanelOpen(false); setSidebarCollapsed(false); setSidebarOpen(true); }} onConversation={() => { setFilePanelOpen(false); setSidebarOpen(false); }} onFiles={() => { setSidebarOpen(false); openCurrentFiles(); }} onControl={openControl} />
+      <WorkbenchTabs directoryOpen={sidebarOpen} filesOpen={filePanelOpen} onDirectory={searchDirectory} onConversation={() => { setFilePanelOpen(false); setSidebarOpen(false); }} onFiles={() => { setSidebarOpen(false); openCurrentFiles(); focusPanel('#project-file-panel .panel-close'); }} onControl={() => { openControl(); focusPanel('.control-center .panel-close'); }} />
       <header className="workbench-summary"><h1>AI 工作台</h1><p>{bootstrapping ? "正在同步工作区…" : bootstrapError ? "连接失败，请检查连接后重新同步" : `会话、项目与文件 · ${selectableModelCount} 个可用模型${reloadLabel}`}</p></header>
       <div className="home-workbench-layout"><div className="task-content">
       <section className={`command-stage ${sidebarOpen ? "sidebar-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${filePanelOpen ? "files-open" : ""} ${filePanelOpen && filePanelWidth <= 560 ? "file-panel-compact" : ""}`} style={{ "--sidebar-width": `${sidebarWidth}px`, "--file-panel-width": `${filePanelWidth}px` }}>

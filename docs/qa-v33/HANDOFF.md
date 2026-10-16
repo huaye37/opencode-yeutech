@@ -88,3 +88,12 @@ Browser plugin/skill not available；`agent-browser` CLI也未安装。按fronte
 - 1440/2560/390实测默认`blur(14px) saturate(0.4)`、`matrix(1.04,0,0,1.04,0,0)`；减少透明度均为`none`。证据在`home-language-verification.json`的wallpaper/reducedWallpaperFilter字段。
 - 重建production并刷新全部主题/视口及边界截图、原浏览器交互回归通过；此补充未改业务，不重复跑不相干服务测试。
 - 账户菜单与辅助栏外观链接均已是`https://yeutech.cn/settings/?site=agent`，无需修改。
+
+
+## 2026-10-17 线上巡检修复（本轮未发布）
+
+- 账户头像改为真实bootstrap门户身份的用户名首字符大写；BFF只增加已认证`user.username`，不从本地猜身份或硬编码L，无身份时显示`?`。现有鉴权/工作区隔离不变；BFF测试核对真实fixture账号ryan，浏览器mock另用lucian验证L。
+- “会话与项目”复用统一目录入口：退出专注、收起文件、展开已收起项目栏并聚焦原搜索框；“文件”和“任务状态”复用原handler并把焦点送入对应面板，滚动遵守减少动态偏好。手机文件抽屉仍需原关闭按钮返回，不绕过遮罩。
+- 验证：isolated服务`npm test`231/231（未在上游仓库根运行测试）；定制web production build及最终合同检查通过；canonical同步仅target本树web/src/design，无合同diff。
+- Browser plugin not available，Playwright+Chrome使用本地mock18141、production preview18149。1440/2560/390×light/dark六组：账户首字母、收起后目录展开与焦点、文件/任务面板焦点、返回目录、无横溢/pageerror均通过；截图`/tmp/yeutech-oct17-qa/agent-*.png`。实际生产身份与线上路径仍待主控发布后检查。
+- 没有修改上游packages/app、会话持久数据或执行协议；没有push、NAS部署、代理/现有服务重启、考研操作。本次临时本地mock不是生产服务。

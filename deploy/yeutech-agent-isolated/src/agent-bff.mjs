@@ -1355,7 +1355,7 @@ export function createAgentBff(options) {
         response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         const drafts = sessionDraftStore?.list(identity.user.portalUserId) ?? [];
         const sessionPreferences = Object.fromEntries((sessionPolicyStore?.list(identity.user.portalUserId) || []).map((item) => [item.sessionId, item]));
-        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, sessions: [...drafts, ...projectedSessions], states, permissions, models: catalog, projects, sessionPreferences, defaultModel: selectDefaultModel(catalog, options.defaultModel), reload, workerActive: Boolean(dormantWorker?.active) }));
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, user: { username: identity.user.username }, sessions: [...drafts, ...projectedSessions], states, permissions, models: catalog, projects, sessionPreferences, defaultModel: selectDefaultModel(catalog, options.defaultModel), reload, workerActive: Boolean(dormantWorker?.active) }));
         return;
       }
       if (incoming.pathname === "/api/workbench/session-index" && request.method === "GET") {

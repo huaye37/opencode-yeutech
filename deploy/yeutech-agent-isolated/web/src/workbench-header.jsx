@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 
 /** Home-language site header: account/appearance remain portal-owned; refresh reuses the existing handler. */
-export function WorkbenchHeader({ loading, onRefresh, onSearch }) {
+export function WorkbenchHeader({ user, loading, onRefresh, onSearch }) {
   const [open, setOpen] = useState(false);
   const menu = useRef(null);
   const trigger = useRef(null);
@@ -34,7 +34,7 @@ export function WorkbenchHeader({ loading, onRefresh, onSearch }) {
       <a className="portal-return" href="https://yeutech.cn/" aria-label="返回门户"><Icon name="chevron" size={16} /><span>返回门户</span></a>
       <button type="button" className="header-search" aria-label="搜索会话与项目 (⌘K)" onClick={onSearch}><Icon name="search" size={18} /><span>搜索会话与项目…</span><kbd>⌘K</kbd></button>
       <div className="account-menu" ref={menu}>
-        <button ref={trigger} className="account-trigger" aria-label="账户与设置" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}><Icon name="user" size={20} /></button>
+        <button ref={trigger} className="account-trigger" title={user?.username || "账户与设置"} aria-label="账户与设置" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}><span className="account-initial" aria-hidden="true">{Array.from(user?.username?.trim() || "?")[0].toLocaleUpperCase()}</span></button>
         {open ? <nav className="account-popover" role="menu" aria-label="账户与设置">
           <a role="menuitem" href="https://yeutech.cn/">在门户管理账户<Icon name="user" size={17} /></a>
           <a role="menuitem" href="https://yeutech.cn/settings/?site=agent">外观设置<Icon name="sparkles" size={17} /></a>

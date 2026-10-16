@@ -19,7 +19,7 @@
 .workspace-v33 .header-search span { flex: 1; text-align: left; }
 .workspace-v33 .header-search kbd { font: inherit; }
 .workspace-v33 .toolbar-actions .account-trigger { width: 44px; min-height: 44px; padding: 0; justify-content: center; background: transparent; box-shadow: none; border: 0; }
-.workspace-v33 .account-trigger svg { width: 32px; height: 32px; padding: 6px; border: 1px solid var(--yt-edge); background: var(--yt-layer-control); border-radius: var(--radius-pill); }
+.workspace-v33 .account-trigger .account-initial { display: grid; place-items: center; font-size: 13px; font-weight: 600; width: 32px; height: 32px; border: 1px solid var(--yt-edge); background: var(--yt-layer-control); border-radius: var(--radius-pill); }
 .workspace-v33 .account-popover { top: calc(100% + 8px); background: var(--yt-layer-overlay-nested); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--yt-shadow-overlay); }
 .workspace-v33 .workbench-tabs { position: static; display: flex; align-items: center; gap: 4px; flex: none; overflow-x: auto; margin: 0 0 24px; padding: 0; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
 .workspace-v33 .workbench-tabs button { display: inline-flex; flex: none; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: var(--radius-control); font-size: 15px; color: var(--yt-ink-secondary); }
