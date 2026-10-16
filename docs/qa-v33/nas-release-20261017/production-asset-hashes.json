@@ -1,0 +1,12 @@
+[
+  {
+    "site": "agent",
+    "url": "https://agent.yeutech.cn/assets/index-DT0LDULY.css",
+    "asset": "index-DT0LDULY.css",
+    "browserExportSha256": "080120edb723f287b81992ff73009773ed882f64badeaabeef27809d76ec189f",
+    "sourceSha256": "080120edb723f287b81992ff73009773ed882f64badeaabeef27809d76ec189f",
+    "browserExportMatches": true,
+    "containsMaterialContract": true,
+    "productionBytesVerified": true
+  }
+]

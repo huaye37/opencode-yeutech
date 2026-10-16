@@ -99,3 +99,14 @@ Browser plugin/skill not available；`agent-browser` CLI也未安装。按fronte
 - 没有修改上游packages/app、会话持久数据或执行协议；没有push、NAS部署、代理/现有服务重启、考研操作。本次临时本地mock不是生产服务。
 
 - 本轮补验：1440桌面与390×844手机，各覆盖radius0/alpha0、alpha100、减透明和高对比（全部减动态），共8组，页面/任务面板无横溢，圆角0与无blur状态正确。仅本地production preview+fixture，不代表线上。新截图、结果、复现脚本及测试/构建日志在 `regression-20261017/`，未覆盖旧验收记录。
+
+
+## 2026-10-17 NAS正式发布与线上收尾
+
+此前“未发布”陈述保留为当时历史；本节登记随后已实际完成的发布。
+
+真实bootstrap账号lucian显示首字母L；收起目录后从顶栏恢复展开，原搜索框获得焦点。截图中的9月17日旧会话失败记录不是本次运行错误；未发模型请求。
+
+- agent: `fd6dc0a2d304d45257d9cb7547ee62498ee68620` → `yeutech-agent:20261017-fix-fd6dc0a2d304`；健康与部署清单hash通过。
+
+六站原始生产静态资源与本地payload核对通过，实际包含canonical材质合同；受保护容器身份/镜像/启动时间未变，挂载不变。逐站备份和回滚入口见 `nas-release-20261017/release-receipt.json`；截图、资源hash、精确线上范围与未知项见同目录README。本次只读线上桌面关键路径不等于线上全矩阵。未push，未操作真实模型/作者采用/设备控制，未执行回滚演练。

@@ -1,0 +1,12 @@
+{
+  "site": "agent",
+  "commit": "fd6dc0a2d304d45257d9cb7547ee62498ee68620",
+  "files": {
+    "web/dist/index.html": "112a9813afd69e176f57486427a5ee85c44726117b88ab7db966f5a153704871",
+    "web/dist/assets/index-DT0LDULY.css": "080120edb723f287b81992ff73009773ed882f64badeaabeef27809d76ec189f",
+    "web/dist/assets/mammoth.browser-DpbOyv2o.js": "97886987036db3fa2460b0838b3fc55fa3449c6f32d8bdcb9dfa8daa90e96f8b",
+    "web/dist/assets/browser-BIZEB9Ly.js": "eddcd5a7df1892e9e5f13d79319b24ab400ecd1f3e90a21a0fbf9e0cf611aa2d",
+    "web/dist/assets/index-wCmAJed-.js": "a4e941c82075e066df86ff87a007baa1eac734fdd635750aba3cfbd44711d06c",
+    "src/agent-bff.mjs": "1ada5ae398743504c8222eb1008d1942762c00954c46efb49e07c9cf970ec374"
+  }
+}
