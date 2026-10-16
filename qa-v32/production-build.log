@@ -1,0 +1,21 @@
+
+> @yeutech/agent-workbench-web@0.1.0 build
+> vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 41 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                            0.46 kB │ gzip:   0.31 kB
+dist/assets/index-BdqpySKA.css           101.39 kB │ gzip:  16.67 kB
+dist/assets/browser-BIZEB9Ly.js            5.41 kB │ gzip:   2.75 kB
+dist/assets/index-CueqqAU7.js            365.51 kB │ gzip: 112.32 kB
+dist/assets/mammoth.browser-Bz--gjk6.js  491.24 kB │ gzip: 118.57 kB
+
+✓ built in 157ms
+
+> @yeutech/agent-workbench-web@0.1.0 postbuild
+> node verify-material-build.mjs
+
+YEUTECH material definitions verified in 1 production CSS files.

@@ -26,7 +26,7 @@ export function SessionRow({ session, selected, running, runtimeAvailable, reaso
   </div>;
 }
 
-export function Sidebar({ projects, conversations, standaloneSessions, selected, selectedProject, expandedProjects, runningSessionIds, runtimeSessions, modelCount, loading, onSelect, onSelectProject, onNew, onNewProject, onDiscoverProjects, onNewProjectSession, onOpenProjectFiles, onRenameProject, onDeleteProject, onRenameSession, onDeleteSession, onForkSession, onCapabilities, onPlugins, onControl, onCollapse }) {
+export function Sidebar({ shellHeader, projects, conversations, standaloneSessions, selected, selectedProject, expandedProjects, runningSessionIds, runtimeSessions, modelCount, loading, onSelect, onSelectProject, onNew, onNewProject, onDiscoverProjects, onNewProjectSession, onOpenProjectFiles, onRenameProject, onDeleteProject, onRenameSession, onDeleteSession, onForkSession, onCapabilities, onPlugins, onControl, onCollapse }) {
   const [query, setQuery] = useState("");
   const [standaloneOpen, setStandaloneOpen] = useState(() => storedBoolean(STANDALONE_EXPANDED_STORAGE_KEY, true));
   const normalizedQuery = query.trim().toLowerCase();
@@ -40,7 +40,7 @@ export function Sidebar({ projects, conversations, standaloneSessions, selected,
     try { window.localStorage.setItem(STANDALONE_EXPANDED_STORAGE_KEY, String(next)); }
     catch { /* Folder state persistence is optional. */ }
   };
-  return <aside className="sidebar" id="project-sidebar" aria-label="会话与项目" data-layer="chrome"><h1 className="directory-heading">会话与项目</h1><div className="sidebar-actions">
+  return <aside className="sidebar" id="project-sidebar" aria-label="会话与项目" data-layer="chrome">{shellHeader}<h1 className="directory-heading">会话与项目</h1><div className="sidebar-actions">
     <div className="primary-action-row"><button className="primary-button" disabled={loading} onClick={onNew}><Icon name="chatPlus" />新建独立会话</button><button className="collapse-button" aria-label="收起项目栏" title="收起项目栏" onClick={onCollapse}><Icon name="panel" /></button></div>
     <div className="sidebar-action-grid"><button disabled={loading} onClick={onNewProject}><Icon name="plus" />新建项目</button><button disabled={loading} onClick={onDiscoverProjects}><Icon name="folderIn" />扫描 NAS 项目</button></div>
     <button className="sidebar-action console-entry" disabled={loading} onClick={onControl} aria-haspopup="dialog"><Icon name="shield" /><span className="sidebar-action-copy"><b>任务状态</b><small>当前目标、进度和最近操作</small></span><em>查看</em></button>

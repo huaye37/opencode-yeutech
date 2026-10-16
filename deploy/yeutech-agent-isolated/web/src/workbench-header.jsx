@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 
-/** v3 shell only: account/appearance remain portal-owned; refresh reuses the existing handler. */
+/** Sidebar identity only: account/appearance remain portal-owned; refresh reuses the existing handler. */
 export function WorkbenchHeader({ loading, error, modelCount, reloadLabel, onRefresh }) {
   const [open, setOpen] = useState(false);
   const menu = useRef(null);
@@ -19,10 +19,10 @@ export function WorkbenchHeader({ loading, error, modelCount, reloadLabel, onRef
     window.addEventListener("keydown", close);
     return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("keydown", close); };
   }, [open]);
-  return <header className="workbench-toolbar yt-chrome" data-layer="chrome">
+  return <div className="workbench-identity" data-layer="material">
     <div className="toolbar-brand">
       <a className="brand-home" href="https://yeutech.cn/" aria-label="YEUTECH 首页">YEUTECH</a>
-      <span className="toolbar-divider" aria-hidden="true" />
+
       <strong className="service-name">AI 工作台</strong>
     </div>
     <div className="toolbar-actions">
@@ -40,5 +40,16 @@ export function WorkbenchHeader({ loading, error, modelCount, reloadLabel, onRef
         </nav> : null}
       </div>
     </div>
-  </header>;
+  </div>;
+}
+
+/** Mobile navigation changes only the existing panel visibility, never task state. */
+export function WorkbenchTabs({ directoryOpen, filesOpen, onDirectory, onConversation, onFiles, onControl }) {
+  const active = filesOpen ? "files" : directoryOpen ? "directory" : "conversation";
+  return <nav className="workbench-tabs" aria-label="工作台导航" data-layer="chrome">
+    <button aria-current={active === "directory" ? "page" : undefined} onClick={onDirectory}><Icon name="folder" /><span>会话与项目</span></button>
+    <button aria-current={active === "conversation" ? "page" : undefined} onClick={onConversation}><Icon name="chatPlus" /><span>对话</span></button>
+    <button aria-current={active === "files" ? "page" : undefined} onClick={onFiles}><Icon name="folderIn" /><span>文件</span></button>
+    <button onClick={onControl} aria-haspopup="dialog"><Icon name="shield" /><span>任务状态</span></button>
+  </nav>;
 }

@@ -1,0 +1,58 @@
+[
+  {
+    "file": "workbench-bootstrap.js",
+    "originalLines": [
+      1241,
+      1337
+    ],
+    "bodyByteIdentical": true
+  },
+  {
+    "file": "use-projection-events.js",
+    "originalLines": [
+      1450,
+      1623
+    ],
+    "bodyByteIdentical": true
+  },
+  {
+    "file": "workbench-actions.js",
+    "originalLines": [
+      1624,
+      2046
+    ],
+    "bodyByteIdentical": true
+  },
+  {
+    "file": "api.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "attachment-state.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "markdown-parser.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "message-projection.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "message-scroll.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "project-file-reference.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "session-ordering.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "portal-appearance.js",
+    "byteIdentical": true
+  }
+]
