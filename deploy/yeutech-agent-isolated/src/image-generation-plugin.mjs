@@ -15,6 +15,9 @@ export class ImageGenerationError extends Error {
     this.name = "ImageGenerationError";
     this.code = code;
     this.status = status;
+    this.statusCode = status;
+    this.retryable = status >= 500;
+    this.recoveryAction = status >= 500 ? "retry" : null;
   }
 }
 
@@ -165,9 +168,8 @@ async function requestJSON(url, init, { fetchImpl, timeout, responseLimit, opera
     const response = await fetchImpl(url, { ...init, signal: scoped.signal });
     const body = await readBounded(response.body, responseLimit, "IMAGE_RESPONSE_TOO_LARGE");
     if (!response.ok) {
-      const detail = body.toString("utf8").slice(0, 500).replace(/\s+/g, " ").trim();
       throw new ImageGenerationError(operation === "catalog" ? "IMAGE_CATALOG_UNAVAILABLE" : "IMAGE_UPSTREAM_ERROR",
-        `${operation === "catalog" ? "Image model catalog" : "Image generation"} request failed (${response.status})${detail ? `: ${detail}` : ""}`,
+        `${operation === "catalog" ? "Image model catalog" : "Image generation"} request failed (${response.status})`,
         { status: 502 });
     }
     try {

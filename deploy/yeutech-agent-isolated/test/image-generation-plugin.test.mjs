@@ -215,7 +215,14 @@ test("returns stable upstream, timeout, and cancellation errors", async (t) => {
       baseURL: "http://proxy.test/v1", token: "secret",
       fetchImpl: async () => new Response("provider down", { status: 503 }),
     });
-    await assert.rejects(plugin.listModels(), errorCode("IMAGE_CATALOG_UNAVAILABLE"));
+    await assert.rejects(plugin.listModels(), error => {
+      assert.equal(error.code, "IMAGE_CATALOG_UNAVAILABLE");
+      assert.equal(error.statusCode, 502);
+      assert.equal(error.retryable, true);
+      assert.equal(error.recoveryAction, "retry");
+      assert.equal(error.message.includes("provider down"), false);
+      return true;
+    });
   });
   await t.test("timeout", async () => {
     const plugin = createImageGenerationPlugin({

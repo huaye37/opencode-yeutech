@@ -94,7 +94,7 @@ test("business xAI images honor default policy, preserve replay, and recover fro
       const models = await (await fetch(`${baseURL}/api/plugins/v1/image-generation/models`, { headers })).json();
       assert.deepEqual(models.data.map(model => model.id), ["z-allowed-image"]);
       const input = { consumer: "creator-api", idempotencyKey: "policy-retry", prompt: "a harbor" };
-      assert.notEqual((await post({ ...input, quality: "high" })).status, 201);
+      assert.equal((await post({ ...input, quality: "high" })).status, 400);
       assert.equal(generated.length, 0);
       const first = await post(input);
       assert.equal(first.status, 201);
