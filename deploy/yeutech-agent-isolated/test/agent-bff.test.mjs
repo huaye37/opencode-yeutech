@@ -67,6 +67,53 @@ test("rejects anonymous API, migration, and static requests before reaching an u
   });
 });
 
+test("business xAI images honor default policy, preserve replay, and recover from invalid quality", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "yeutech-xai-policy-"));
+  const policyFile = path.join(root, "policy.json");
+  await writeFile(policyFile, JSON.stringify({ consumers: { "creator-api": { enabled: true, allowedModelIds: ["z-allowed-image"] } } }));
+  const generated = [];
+  const catalog = http.createServer(async (request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v1/model-capabilities?schema=2") {
+      return response.end(JSON.stringify({ data: ["a-forbidden-image", "z-allowed-image"].map(id => ({
+        id, type: "xai", available: true, selectable: true, capability_status: "ready", token_limits_applicable: false,
+        context_length: 0, max_output_tokens: 0, supported_input_modalities: ["text"], supported_output_modalities: ["image"], supported_workloads: ["image_generation"],
+      })) }));
+    }
+    assert.equal(request.url, "/v1/images/generations");
+    const parts = []; for await (const part of request) parts.push(part);
+    generated.push(JSON.parse(Buffer.concat(parts).toString()));
+    response.end(JSON.stringify({ data: [{ b64_json: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0WQAAAAASUVORK5CYII=" }] }));
+  });
+  const modelCatalogURL = await listen(catalog);
+  const secret = "plugin-secret-01234567890123456789";
+  try {
+    await withBff(() => {}, async baseURL => {
+      const headers = { authorization: `Bearer ${secret}`, "content-type": "application/json" };
+      const post = body => fetch(`${baseURL}/api/plugins/v1/image-generation/business-runs`, { method: "POST", headers, body: JSON.stringify(body) });
+      const models = await (await fetch(`${baseURL}/api/plugins/v1/image-generation/models`, { headers })).json();
+      assert.deepEqual(models.data.map(model => model.id), ["z-allowed-image"]);
+      const input = { consumer: "creator-api", idempotencyKey: "policy-retry", prompt: "a harbor" };
+      assert.notEqual((await post({ ...input, quality: "high" })).status, 201);
+      assert.equal(generated.length, 0);
+      const first = await post(input);
+      assert.equal(first.status, 201);
+      const receipt = (await first.json()).data;
+      assert.equal(receipt.model, "z-allowed-image");
+      assert.equal(receipt.width, 1);
+      assert.equal(generated[0].model, "z-allowed-image");
+      assert.equal(generated[0].aspect_ratio, "1:1");
+      const replay = (await (await post(input)).json()).data;
+      assert.equal(replay.id, receipt.id);
+      assert.equal(generated.length, 1);
+      assert.equal((await (await fetch(`${baseURL}/health`)).json()).activePluginRuns, 0);
+      assert.equal((await post({ ...input, idempotencyKey: "forbidden", model: "a-forbidden-image" })).status, 409);
+      assert.equal(generated.length, 1);
+    }, { modelCatalogURL, modelCatalogToken: "catalog-secret", pluginServiceToken: secret, consumerModelPolicyFile: policyFile,
+      controlPlaneDatabasePath: path.join(root, "control.sqlite"), projectsRoot: root });
+  } finally { await close(catalog); await rm(root, { recursive: true, force: true }); }
+});
+
 test("protects the image plugin execution API with its independent service token", async () => {
   let generated = null;
   const secret = "plugin-secret-01234567890123456789";

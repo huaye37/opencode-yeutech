@@ -4,6 +4,7 @@ const ALLOWED_SIZES = new Set(["auto", "1024x1024", "1024x1536", "1536x1024"]);
 const ALLOWED_QUALITIES = new Set(["auto", "low", "medium", "high"]);
 const CHAT_PROVIDER_TYPES = new Set(["gemini", "antigravity"]);
 const OPENAI_IMAGE_PROVIDER_TYPES = new Set(["openai", "openai-image"]);
+const XAI_IMAGE_ASPECT_RATIOS = Object.freeze({ auto: "auto", "1024x1024": "1:1", "1024x1536": "2:3", "1536x1024": "3:2" });
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -35,7 +36,7 @@ export function createImageGenerationPlugin({
   if (typeof fetchImpl !== "function") throw inputError("fetchImpl must be a function");
 
   async function listModels({ signal } = {}) {
-    const payload = await requestJSON(new URL("model-capabilities", endpoint), {
+    const payload = await requestJSON(new URL("model-capabilities?schema=2", endpoint), {
       headers: { authorization },
       signal,
     }, { fetchImpl, timeout, responseLimit, operation: "catalog" });
@@ -51,7 +52,11 @@ export function createImageGenerationPlugin({
       id: model.id,
       name: typeof model.display_name === "string" && model.display_name.trim() ? model.display_name.trim() : model.id,
       providerType: normalizedProviderType(model),
-    })).filter((model) => CHAT_PROVIDER_TYPES.has(model.providerType) || OPENAI_IMAGE_PROVIDER_TYPES.has(model.providerType))
+      ...(normalizedProviderType(model) === "xai" ? {
+        supportedQualities: model.supported_parameters?.includes("quality") ? ["auto", "low", "medium"] : ["auto"],
+        sizeSemantics: "aspect_ratio",
+      } : {}),
+    })).filter((model) => CHAT_PROVIDER_TYPES.has(model.providerType) || OPENAI_IMAGE_PROVIDER_TYPES.has(model.providerType) || model.providerType === "xai")
       .sort((left, right) => left.id.localeCompare(right.id));
   }
 
@@ -74,7 +79,19 @@ export function createImageGenerationPlugin({
         ...(request.idempotencyKey ? { "idempotency-key": request.idempotencyKey } : {}),
       };
       const chat = CHAT_PROVIDER_TYPES.has(selected.providerType);
-      const payload = chat ? {
+      const xai = selected.providerType === "xai";
+      if (xai && !selected.supportedQualities.includes(request.quality)) {
+        throw inputError(`该生图模型不支持 ${request.quality} 画质，请选择 ${selected.supportedQualities.join(" / ")}`);
+      }
+      const payload = xai ? {
+        model: selected.id,
+        prompt: request.prompt,
+        aspect_ratio: XAI_IMAGE_ASPECT_RATIOS[request.size],
+        resolution: "1k",
+        ...(selected.supportedQualities.length > 1 ? { quality: request.quality } : {}),
+        n: 1,
+        response_format: "b64_json",
+      } : chat ? {
         model: selected.id,
         messages: [{ role: "user", content: request.prompt }],
         stream: false,

@@ -27,7 +27,7 @@ test("selects only ready image workloads from the authenticated capability catal
       { id: "gemini-image", name: "gemini-image", providerType: "antigravity" },
       { id: "openai-image", name: "openai-image", providerType: "openai" },
     ]);
-    assert.deepEqual(requests, [{ path: "/v1/model-capabilities", authorization: "Bearer catalog-secret" }]);
+    assert.deepEqual(requests, [{ path: "/v1/model-capabilities?schema=2", authorization: "Bearer catalog-secret" }]);
   } finally {
     await server.close();
   }
@@ -36,7 +36,7 @@ test("selects only ready image workloads from the authenticated capability catal
 test("adapts Gemini image responses from chat completions and normalizes PNG output", async () => {
   const requests = [];
   const server = await startServer(async (request, response) => {
-    if (request.url === "/v1/model-capabilities") return sendJSON(response, { data: [capability("gemini-image", "antigravity")] });
+    if (request.url === "/v1/model-capabilities?schema=2") return sendJSON(response, { data: [capability("gemini-image", "antigravity")] });
     requests.push({ path: request.url, headers: request.headers, body: await readJSON(request) });
     sendJSON(response, {
       choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${PNG.toString("base64")}` } }], revised_prompt: "refined" } }],
@@ -74,7 +74,7 @@ test("adapts Gemini image responses from chat completions and normalizes PNG out
 test("adapts OpenAI image generations and normalizes JPEG output", async () => {
   const requests = [];
   const server = await startServer(async (request, response) => {
-    if (request.url === "/v1/model-capabilities") return sendJSON(response, { data: [capability("gpt-image", "openai")] });
+    if (request.url === "/v1/model-capabilities?schema=2") return sendJSON(response, { data: [capability("gpt-image", "openai")] });
     requests.push({ path: request.url, body: await readJSON(request) });
     sendJSON(response, { data: [{ b64_json: JPEG.toString("base64"), revised_prompt: "safer prompt" }], usage: { total_tokens: 7 } });
   });
@@ -93,6 +93,49 @@ test("adapts OpenAI image generations and normalizes JPEG output", async () => {
   }
 });
 
+test("xAI maps sizes to aspect ratios and returns actual dimensions without text controls", async () => {
+  const requests = [];
+  const server = await startServer(async (request, response) => {
+    if (request.url === "/v1/model-capabilities?schema=2") return sendJSON(response, { data: [
+      { ...capability("xai-image", "xai"), supported_parameters: ["quality"] },
+    ] });
+    requests.push({ path: request.url, body: await readJSON(request) });
+    sendJSON(response, { data: [{ b64_json: PNG.toString("base64") }] });
+  });
+  try {
+    const plugin = createImageGenerationPlugin({ baseURL: `${server.url}/v1`, token: "secret" });
+    assert.deepEqual(await plugin.listModels(), [{ id: "xai-image", name: "xai-image", providerType: "xai", supportedQualities: ["auto", "low", "medium"], sizeSemantics: "aspect_ratio" }]);
+    for (const [size, ratio] of [["auto", "auto"], ["1024x1024", "1:1"], ["1024x1536", "2:3"], ["1536x1024", "3:2"]]) {
+      const result = await plugin.generate({ prompt: "harbor", model: "xai-image", size, quality: "low" });
+      assert.deepEqual(requests.at(-1), { path: "/v1/images/generations", body: {
+        model: "xai-image", prompt: "harbor", aspect_ratio: ratio, resolution: "1k", quality: "low", n: 1, response_format: "b64_json",
+      } });
+      assert.equal(result.width, 1264);
+      assert.equal(result.height, 848);
+    }
+    await assert.rejects(plugin.generate({ prompt: "harbor", model: "xai-image", quality: "high" }), errorCode("IMAGE_INPUT_INVALID"));
+    assert.equal(requests.length, 4);
+  } finally { await server.close(); }
+});
+
+test("xAI rejects undeclared quality before generation and permits a corrected retry", async () => {
+  let generations = 0;
+  const server = await startServer(async (request, response) => {
+    if (request.url === "/v1/model-capabilities?schema=2") return sendJSON(response, { data: [capability("xai-image", "xai")] });
+    const body = await readJSON(request);
+    generations += 1;
+    assert.equal(Object.hasOwn(body, "quality"), false);
+    sendJSON(response, { data: [{ b64_json: PNG.toString("base64") }] });
+  });
+  try {
+    const plugin = createImageGenerationPlugin({ baseURL: `${server.url}/v1`, token: "secret" });
+    await assert.rejects(plugin.generate({ prompt: "harbor", quality: "medium" }), errorCode("IMAGE_INPUT_INVALID"));
+    assert.equal(generations, 0);
+    await plugin.generate({ prompt: "harbor", quality: "auto" });
+    assert.equal(generations, 1);
+  } finally { await server.close(); }
+});
+
 test("downloads HTTPS image URLs with a bounded response and validates WebP", async () => {
   const calls = [];
   const plugin = createImageGenerationPlugin({
@@ -101,7 +144,7 @@ test("downloads HTTPS image URLs with a bounded response and validates WebP", as
     allowedImageHosts: ["assets.test"],
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
-      if (String(url).endsWith("/model-capabilities")) return jsonResponse({ data: [capability("gpt-image", "openai")] });
+      if (String(url).endsWith("/model-capabilities?schema=2")) return jsonResponse({ data: [capability("gpt-image", "openai")] });
       if (String(url).endsWith("/images/generations")) return jsonResponse({ data: [{ url: "https://assets.test/image.webp" }] });
       return new Response(WEBP, { headers: { "content-type": "image/webp" } });
     },
@@ -123,7 +166,7 @@ test("rejects remote image URLs unless the host is explicitly trusted", async ()
   const plugin = createImageGenerationPlugin({
     baseURL: "https://proxy.test/v1",
     token: "secret",
-    fetchImpl: async (url) => String(url).endsWith("/model-capabilities")
+    fetchImpl: async (url) => String(url).endsWith("/model-capabilities?schema=2")
       ? jsonResponse({ data: [capability("gpt-image", "openai")] })
       : jsonResponse({ data: [{ url: "https://127.0.0.1/private.png" }] }),
   });

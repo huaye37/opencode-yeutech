@@ -18,6 +18,7 @@ const CAPABILITY_FIELDS = new Set([
   "supported_input_modalities", "supported_output_modalities", "supported_workloads", "thinking", "supports_web_search",
   "available", "selectable", "unavailable_reason", "capability_status", "service_tiers",
   "token_limits_applicable", "availability_basis", "verification_status",
+  "selectable_reason",
 ]);
 const CAPABILITY_STATUSES = new Set(["incomplete", "complete", "ready"]);
 const CAPABILITY_MODALITIES = new Set(["text", "image", "audio", "video"]);
@@ -122,6 +123,9 @@ export function validateCapabilityCatalog(payload) {
     if (entry.description !== undefined && typeof entry.description !== "string") {
       throw capabilityError(`data[${index}].description`, "must be a string");
     }
+    if (entry.selectable_reason !== undefined && (typeof entry.selectable_reason !== "string" || entry.selectable_reason.length > 500)) {
+      throw capabilityError(`data[${index}].selectable_reason`, "must be a string of at most 500 characters");
+    }
     for (const field of ["context_length", "max_input_tokens", "max_output_tokens"]) validateInteger(entry[field], field, index);
     validateStringArray(entry.supported_parameters, "supported_parameters", index);
     for (const field of ["supported_input_modalities", "supported_output_modalities"]) validateModalities(entry[field], field, index);
@@ -217,6 +221,7 @@ export function normalizeModelCatalog(payload) {
     const explicitlyNonConversation = (supportedWorkloads || (modalities.input.length > 0 && modalities.output.length > 0)) && !isConversationModel(normalized);
     let disabledReason = "";
     if (entry.available === false) disabledReason = UNAVAILABLE_REASON_MESSAGES[entry.unavailable_reason] || "模型当前不可用";
+    else if (entry.selectable === false && entry.selectable_reason) disabledReason = entry.selectable_reason;
     else if (explicitlyNonConversation) disabledReason = "当前工作台不支持该模型类型";
     else if (entry.selectable === false || entry.capability_status === "incomplete" || !context || !input || !output) {
       disabledReason = "能力信息待补全";
