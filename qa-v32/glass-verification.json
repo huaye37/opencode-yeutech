@@ -1,0 +1,24 @@
+{
+  "checks": [
+    {
+      "width": 1440,
+      "nested": [],
+      "toolbarCount": 0,
+      "sidebar": "blur(17.5px) saturate(1.8)",
+      "conversation": "blur(14px) saturate(1.6)",
+      "composer": "none",
+      "header": "rgba(0, 0, 0, 0)",
+      "pageMaxWidth": "none"
+    },
+    {
+      "width": 390,
+      "nested": [],
+      "toolbarCount": 0,
+      "sidebar": "blur(17.5px) saturate(1.8)",
+      "conversation": "blur(14px) saturate(1.6)",
+      "composer": "none",
+      "header": "rgba(0, 0, 0, 0)",
+      "pageMaxWidth": "none"
+    }
+  ]
+}

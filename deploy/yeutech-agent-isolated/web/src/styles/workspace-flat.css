@@ -1,0 +1,97 @@
+/* Surface/overlay owns the material; readable content inside it stays flat. */
+.workspace-v33 :is(
+  .profile-grid article, .skill-list article, .plugin-grid article,
+  .discovery-list article, .control-grid > section, .advanced-grid section,
+  .honest-empty, .trajectory-list article, .diff-file,
+  .file-preview, .document-preview, .file-preview > pre, .spreadsheet-preview,
+  .timeline-tool, .reasoning-panel, .reasoning-block,
+  .control-card, .capability-card, .plugin-card,
+  .image-artifacts, .image-artifacts article, .upload-queue article,
+  .user-bubble, .message-attachments span
+) {
+  background: transparent;
+  background-image: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.workspace-v33 :is(.profile-icon, .plugin-tags code, .control-section-heading em) {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+.workspace-v33 .profile-icon { width: 24px; height: 28px; }
+.workspace-v33 .profile-grid { gap: 16px 24px; }
+.workspace-v33 .profile-grid article { grid-template-columns: 24px minmax(0, 1fr); padding: 8px 0; }
+.workspace-v33 .skill-list { gap: 0; }
+.workspace-v33 .skill-list article { padding: 14px 0; border-bottom: 1px solid var(--yt-separator); }
+.workspace-v33 .plugin-grid { gap: 24px; }
+.workspace-v33 .plugin-grid article { padding: 0 0 18px; border-bottom: 1px solid var(--yt-separator); }
+.workspace-v33 .plugin-tags code { padding: 2px 0; margin-right: 8px; }
+.workspace-v33 .discovery-list article { padding-inline: 0; border-bottom: 1px solid var(--yt-separator); }
+.workspace-v33 .control-grid { gap: 20px 24px; padding: 22px; }
+.workspace-v33 .control-grid > section { padding: 0 0 18px; border-bottom: 1px solid var(--yt-separator); }
+.workspace-v33 .control-section-heading em { padding-inline: 0; }
+.workspace-v33 .honest-empty { padding: 8px 0; }
+.workspace-v33 .control-advanced summary { padding-inline: 0; }
+.workspace-v33 .advanced-grid { gap: 20px 24px; padding: 0 0 12px; }
+.workspace-v33 .advanced-grid section { padding: 0; }
+.workspace-v33 .trajectory-list article { padding: 9px 0; }
+.workspace-v33 .diff-file + .diff-file { border-top: 1px solid var(--yt-separator); }
+.workspace-v33 :is(.timeline-tool, .reasoning-panel) { padding-inline: 0; }
+.workspace-v33 .image-artifacts { padding: 12px 0; }
+.workspace-v33 .upload-queue article { border-bottom: 1px solid var(--yt-separator); }
+.workspace-v33 .upload-queue .done em { color: var(--yt-success); }
+.workspace-v33 .user-bubble { padding: 4px 0 4px 16px; border-right: 2px solid var(--yt-separator); padding-right: 14px; }
+.workspace-v33 .permission-card {
+  padding: 20px 0;
+  background: transparent;
+  background-image: none;
+  border: 0;
+  border-block: 1px solid var(--yt-separator);
+  border-radius: 0;
+  box-shadow: none;
+}
+.workspace-v33 .document-preview { min-height: 0; padding: 12px 4px 24px; }
+.workspace-v33 .file-preview > pre { padding: 12px 4px; }
+.workspace-v33 .spreadsheet-preview > p {
+  position: static;
+  background: transparent;
+  background-image: none;
+  padding-inline: 0;
+}
+.workspace-v33 :is(.file-toolbar, .file-toolbar > div, .preview-actions, .plugin-actions, .dialog-actions) { flex-wrap: wrap; }
+.workspace-v33 .file-toolbar > div { min-width: 0; gap: 8px; }
+.workspace-v33 .file-toolbar nav { flex: 1 1 70px; }
+.workspace-v33 .preview-action { flex-shrink: 0; }
+.workspace-v33 .preview-empty { min-height: 0; height: 100%; padding: 20px 8px; }
+.workspace-v33 .file-panel > header { flex: 0 0 auto; }
+
+/* Short docked panes retain two independent scroll regions, not clipped rows. */
+@media (min-width: 1280px) {
+  .workspace-v33 .conversation-header { flex-wrap: wrap; flex-basis: auto; flex-shrink: 0; }
+  .workspace-v33 .conversation-title { flex: 1 1 160px; }
+  .workspace-v33 .agent-console { flex-wrap: wrap; }
+  .workspace-v33 .command-stage.files-open.file-panel-compact .file-layer:not(.file-expanded) .file-layout {
+    grid-template-rows: minmax(120px, 32%) minmax(0, 1fr);
+    overflow: hidden;
+  }
+  .workspace-v33 .command-stage.files-open.file-panel-compact .file-layer:not(.file-expanded) :is(.file-list, .file-preview) { height: 100%; min-height: 0; max-height: none; }
+  .workspace-v33 .command-stage.files-open.file-panel-compact .file-expanded .file-layout { grid-template-rows: minmax(0, 1fr); }
+  .workspace-v33 .command-stage.files-open.file-panel-compact .file-expanded .file-list { max-height: none; border-right: 1px solid var(--yt-separator); border-bottom: 0; }
+}
+@container filepanel (max-width: 560px) {
+  .workspace-v33 .file-layout { grid-template-rows: minmax(120px, 32%) minmax(0, 1fr); overflow: hidden; }
+  .workspace-v33 :is(.file-list, .file-preview) { height: 100%; min-height: 0; max-height: none; }
+  .workspace-v33 .file-toolbar { flex-direction: row; align-items: center; padding-inline: 12px; }
+  .workspace-v33 .file-toolbar > div { flex: 1 1 100%; justify-content: space-between; }
+}
+@media (max-width: 520px) {
+  .workspace-v33 .control-grid { padding: 18px; gap: 20px; }
+  .workspace-v33 .advanced-grid { gap: 18px; }
+  .workspace-v33 .capability-content { padding: 18px; }
+}
+
+/* Native top-layer row menus remain in the viewport, outside sidebar clipping. */
+.workspace-v33 .row-menu-popover[popover] { position: fixed; inset: auto; margin: 0; }
+.workspace-v33 .row-menu-popover[popover]:not(:popover-open) { display: none; }

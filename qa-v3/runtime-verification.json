@@ -1,0 +1,13 @@
+{
+  "scope": "local mock UI requests/events only; no actual model or NAS execution",
+  "checks": [
+    "upload -> persisted attachment reference",
+    "send -> original prompt payload (Ultra + Ultrafast + attachment) -> running state",
+    "SSE permission projection -> single-use approval -> removal",
+    "stop -> abort -> terminal SSE reconciliation -> composer retained",
+    "new independent-session entry -> draft selection (browser fixture)",
+    "project creation and NAS discovery dialogs preserved",
+    "mobile project draft creation -> conversation pushed in (browser fixture)"
+  ],
+  "errors": []
+}

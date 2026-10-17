@@ -1,0 +1,387 @@
+
+
+@media (max-width: 880px) {
+  .workspace {
+    padding: 0;
+    gap: 0;
+  }
+
+  .workbench-toolbar {
+    min-height: 54px;
+    padding: 6px 8px;
+  }
+
+  .toolbar-brand > strong,
+  .toolbar-divider {
+    display: none;
+  }
+
+  .command-stage {
+    width: calc(100% - 16px);
+    margin: 8px;
+  }
+
+  .workbench-toolbar p,
+  .capability {
+    display: none;
+  }
+
+  .toolbar-actions button {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+
+  .toolbar-actions button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .command-stage,
+  .command-stage.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    border-radius: var(--radius-overlay);
+  }
+
+  .sidebar,
+  .command-stage.sidebar-collapsed .sidebar,
+  .panel-resizer {
+    display: none;
+  }
+
+  .mobile-menu-button,
+  .toolbar-menu {
+    display: inline-grid;
+  }
+
+  .sidebar-collapsed .desktop-expand-button {
+    display: none;
+  }
+
+  /* The drawer is an overlay inside the stage: nested, so flat and near-opaque. */
+  .sidebar-open .sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 12;
+    display: flex;
+    width: min(84vw, 320px);
+    background: var(--yt-layer-overlay-nested);
+    border-right: 1px solid var(--yt-edge);
+    border-radius: 0 var(--radius-overlay) var(--radius-overlay) 0;
+    box-shadow: var(--yt-shadow-overlay);
+    animation: sidebar-in 240ms var(--ease-out);
+  }
+
+  .sidebar-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 11;
+    display: block;
+    width: 100%;
+    background: var(--yt-layer-dim);
+  }
+
+  .messages {
+    padding-inline: clamp(14px, 5vw, 28px);
+  }
+
+  .file-panel {
+    width: min(94vw, 760px);
+  }
+}
+
+@media (max-width: 520px) {
+  .workspace {
+    min-height: 100svh;
+  }
+
+  .workbench-toolbar h1 {
+    font-size: var(--ws-15);
+  }
+
+  .toolbar-actions {
+    gap: 5px;
+  }
+
+  .conversation-header {
+    padding-inline: 10px;
+  }
+
+  .header-console-button,
+  .header-files-button {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+
+  .header-files-button span {
+    display: none;
+  }
+
+  .messages {
+    padding: 18px 14px 10px;
+  }
+
+  .user-bubble {
+    max-width: 88%;
+    font-size: var(--ws-15);
+  }
+
+  .composer-wrap {
+    padding: 8px 10px 10px;
+  }
+
+  .composer textarea {
+    min-height: 60px;
+    padding: 12px 13px 5px;
+  }
+
+  .composer-tools {
+    gap: 4px;
+    padding-inline: 6px;
+    flex-wrap: wrap;
+  }
+
+  .attachment-label,
+  .add-file-button span {
+    display: none;
+  }
+
+  .composer select {
+    max-width: 116px;
+    padding-left: 7px;
+  }
+
+  .composer select[aria-label="推理强度"] {
+    max-width: 88px;
+  }
+
+  .composer select[aria-label="权限模式"] {
+    max-width: 96px;
+  }
+
+  .permission-card {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 14px;
+  }
+
+  .permission-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .capability-layer {
+    padding: 8px;
+  }
+
+  .capability-center {
+    max-height: calc(100dvh - 16px);
+  }
+
+  .capability-center > header {
+    padding: 16px;
+  }
+
+  .capability-summary {
+    overflow-x: auto;
+  }
+
+  .capability-summary span {
+    padding: 10px;
+    white-space: nowrap;
+  }
+
+  .capability-content {
+    padding: 14px;
+  }
+
+  .profile-grid,
+  .plugin-grid,
+  .image-artifacts > div,
+  .advanced-grid,
+  .control-status-strip,
+  .control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-status-strip > span + span {
+    border-left: 0;
+    border-top: 1px solid var(--yt-separator);
+  }
+
+  .control-grid {
+    padding: 12px;
+  }
+
+  .control-wide {
+    grid-column: auto;
+  }
+
+  .image-artifacts {
+    width: calc(100% - 24px);
+  }
+
+  .file-layer {
+    padding: 0;
+  }
+
+  .file-panel {
+    width: 100%;
+    max-width: none;
+    border-radius: 0;
+  }
+
+  .file-space-picker {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .file-space-picker label {
+    justify-content: space-between;
+  }
+
+  .file-space-picker select {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .file-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .file-toolbar > div {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+
+  .upload-button {
+    width: auto;
+    justify-content: center;
+  }
+
+  .file-layout {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .file-list {
+    min-height: 0;
+    max-height: 34dvh;
+    border-right: 0;
+    border-bottom: 1px solid var(--yt-separator);
+  }
+
+  .file-preview {
+    min-height: 180px;
+    padding: 12px;
+  }
+
+  .preview-empty,
+  .preview-unsupported {
+    min-height: 180px;
+  }
+
+  .file-preview iframe {
+    height: 42dvh;
+  }
+
+  .agent-console {
+    width: calc(100% - 16px);
+    gap: 8px;
+    padding: 8px 8px 8px 10px;
+  }
+
+  .agent-console-title {
+    min-width: 0;
+  }
+
+  .agent-console-title small,
+  .console-metrics span:not(:last-child),
+  .console-actions button:not(.console-primary) {
+    display: none;
+  }
+
+  .attached-files {
+    max-width: calc(100vw - 24px);
+  }
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes pulse-state {
+  50% {
+    opacity: 0.48;
+    transform: scale(0.88);
+  }
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0.6;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes sidebar-in {
+  from {
+    transform: translateX(-24px);
+    opacity: 0.6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  :is(button, .preview-action):active {
+    transform: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .command-stage,
+  .workbench-toolbar,
+  .sidebar,
+  .conversation-header,
+  .capability-center,
+  .row-menu-popover,
+  .file-panel,
+  .composer,
+  .file-row,
+  .timeline-tool,
+  .agent-console {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

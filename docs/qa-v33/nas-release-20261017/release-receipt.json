@@ -1,0 +1,78 @@
+{
+  "checkedAt": "2026-10-17T04:22:16.643231+08:00",
+  "sites": {
+    "agent": {
+      "site": "agent",
+      "image": "yeutech-agent:20261017-fix-fd6dc0a2d304",
+      "imageId": "sha256:ab4419e90c40144c463bc6c79ef3130027693d782a5a970767b08afb30bc259b",
+      "containerId": "7a7592d1468e3a163b0c2e44f4384205593052e16cd4276022f4840a9451ec3c",
+      "commit": "fd6dc0a2d304d45257d9cb7547ee62498ee68620",
+      "health": {
+        "ok": true,
+        "activePluginRuns": 0,
+        "workerMode": "dynamic",
+        "components": {
+          "pluginRuntime": "ready",
+          "macCapabilityRuntime": "ready",
+          "projectionStore": "ready"
+        }
+      },
+      "dockerHealth": "healthy",
+      "backup": "/volume1/docker/yeutech-agent/backups/20261017-reviewed-fixes",
+      "sourceVerification": {
+        "commit": "fd6dc0a2d304d45257d9cb7547ee62498ee68620",
+        "files": 6,
+        "match": true
+      },
+      "mountsUnchanged": true,
+      "protectedContainersUnchanged": true,
+      "activityBeforeSwitch": {
+        "proxyRequests": {
+          "count": 1,
+          "unknown": false
+        },
+        "updaters": {
+          "proxyPhase": "complete",
+          "agentPhase": "idle",
+          "agentBusy": false
+        },
+        "writingJobs": 0,
+        "assistantRuns": 0,
+        "assistantDelegations": 0,
+        "assistantUnnotified": 0,
+        "assistantMaintenanceGate": false
+      },
+      "finalCheck": {
+        "health": {
+          "ok": true,
+          "activePluginRuns": 0,
+          "workerMode": "dynamic",
+          "components": {
+            "pluginRuntime": "ready",
+            "macCapabilityRuntime": "ready",
+            "projectionStore": "ready"
+          }
+        },
+        "dockerHealth": "healthy",
+        "containerIdMatch": true,
+        "imageIdMatch": true,
+        "rollbackExists": true,
+        "buildExists": true
+      }
+    }
+  },
+  "protectedContainersUnchanged": true,
+  "protectedContainerNames": [
+    "novel-ai-proxy-blue",
+    "novel-ai-proxy-green",
+    "yeutech-kaoyan",
+    "qinian-gateway",
+    "novel-ai-proxy-gateway-v4",
+    "novel-ai-proxy-gateway-v3",
+    "novel-ai-proxy-gateway-v2",
+    "novel-ai-proxy-gateway",
+    "novel-ai-proxy-amber",
+    "yeutech-web-responses-adapter",
+    "kaoyan-mysql"
+  ]
+}

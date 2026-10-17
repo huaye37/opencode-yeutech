@@ -392,6 +392,7 @@ test("restores active session state during bootstrap without starting a sleeping
       const response = await fetch(`${baseURL}/api/workbench/bootstrap`, { headers: identityHeaders() });
       assert.equal(response.status, 200);
       const bootstrap = await response.json();
+      assert.deepEqual(bootstrap.user, { username: "ryan" });
       assert.deepEqual(bootstrap.states, { ses_running: { type: "busy" } });
       assert.deepEqual(bootstrap.permissions, [{ id: "perm_1", sessionID: "ses_running" }]);
       assert.equal(bootstrap.workerActive, true);

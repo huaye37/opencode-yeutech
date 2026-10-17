@@ -1,0 +1,111 @@
+{
+  "fixture": true,
+  "browser": "Playwright / Chrome; Browser plugin not available",
+  "results": [
+    {
+      "site": "agent",
+      "width": 1440,
+      "variant": "radius-zero-low",
+      "state": {
+        "radius": "0px",
+        "filter": "blur(22.4px) saturate(1.8)",
+        "alpha": "0%",
+        "scroll": 1440,
+        "width": 1440,
+        "motion": true
+      }
+    },
+    {
+      "site": "agent",
+      "width": 1440,
+      "variant": "opacity-high",
+      "state": {
+        "radius": "17.5px",
+        "filter": "blur(22.4px) saturate(1.8)",
+        "alpha": "100%",
+        "scroll": 1440,
+        "width": 1440,
+        "motion": true
+      }
+    },
+    {
+      "site": "agent",
+      "width": 1440,
+      "variant": "reduced-transparency",
+      "state": {
+        "radius": "17.5px",
+        "filter": "none",
+        "alpha": "100%",
+        "scroll": 1440,
+        "width": 1440,
+        "motion": true
+      }
+    },
+    {
+      "site": "agent",
+      "width": 1440,
+      "variant": "contrast",
+      "state": {
+        "radius": "17.5px",
+        "filter": "none",
+        "alpha": "100%",
+        "scroll": 1440,
+        "width": 1440,
+        "motion": true
+      }
+    },
+    {
+      "site": "agent",
+      "width": 390,
+      "variant": "radius-zero-low",
+      "state": {
+        "radius": "0px",
+        "filter": "blur(22.4px) saturate(1.8)",
+        "alpha": "0%",
+        "scroll": 390,
+        "width": 390,
+        "motion": true
+      }
+    },
+    {
+      "site": "agent",
+      "width": 390,
+      "variant": "opacity-high",
+      "state": {
+        "radius": "17.5px",
+        "filter": "blur(22.4px) saturate(1.8)",
+        "alpha": "100%",
+        "scroll": 390,
+        "width": 390,
+        "motion": true
+      }
+    },
+    {
+      "site": "agent",
+      "width": 390,
+      "variant": "reduced-transparency",
+      "state": {
+        "radius": "17.5px",
+        "filter": "none",
+        "alpha": "100%",
+        "scroll": 390,
+        "width": 390,
+        "motion": true
+      }
+    },
+    {
+      "site": "agent",
+      "width": 390,
+      "variant": "contrast",
+      "state": {
+        "radius": "17.5px",
+        "filter": "none",
+        "alpha": "100%",
+        "scroll": 390,
+        "width": 390,
+        "motion": true
+      }
+    }
+  ],
+  "errors": []
+}

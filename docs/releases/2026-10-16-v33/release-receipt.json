@@ -1,0 +1,74 @@
+{
+  "sites": [
+    {
+      "site": "agent",
+      "release": "20261016-v33-211104-b6ce034-r2",
+      "sourceCommit": "b6ce034ff3937528ff2abb7719e8755278560540",
+      "container": "yeutech-agent",
+      "mode": "frontend-hot-swap",
+      "containerRestarted": false,
+      "liveContainerImageReference": "yeutech-agent:v3-20261016",
+      "persistentImageForNextRecreate": "yeutech-agent:20261016-v33-211104-b6ce034-r2",
+      "backup": "/volume1/docker/yeutech-agent/backups/20261016-v33-211104-b6ce034-r2",
+      "rollback": "/volume1/docker/yeutech-agent/backups/20261016-v33-211104-b6ce034-r2/rollback.sh",
+      "health": {
+        "ok": true,
+        "activePluginRuns": 0,
+        "workerMode": "dynamic",
+        "components": {
+          "pluginRuntime": "ready",
+          "macCapabilityRuntime": "ready",
+          "projectionStore": "ready"
+        }
+      },
+      "frontendSha256": "2aabe69d9e8773470bc503cb11b049ac09493d3765db0fa02e06fa3a1f06fe3b",
+      "runtimeDiskVerifiedFiles": 6,
+      "httpStaticRequiresPortalIdentity": true,
+      "httpVerifiedFiles": 0,
+      "newArtifactFiles": 6,
+      "retainedPreviousFiles": 3,
+      "businessDataUnchanged": true,
+      "backendBytesUnchanged": true,
+      "unrelatedContainerIdentitiesUnchanged": true,
+      "allContainerIdentitiesUnchanged": true,
+      "hostStaticMirror": "/volume1/docker/yeutech-agent/source/web/dist",
+      "sourceMirror": null,
+      "browserAcceptance": "pending main-controller Chrome"
+    }
+  ],
+  "finalVerification": {
+    "containerIdentityChangedOnly": [
+      "yeutech-api-manager",
+      "novel-review",
+      "xinghe-writing-desk"
+    ],
+    "allOtherContainersUnchanged": true,
+    "proxyAndKaoyanAndGatewayUnchanged": true,
+    "databaseAndBusinessDataUnchanged": true,
+    "browserAcceptance": "pending main-controller Chrome",
+    "verifiedAt": "2026-10-16T21:22:05+0800",
+    "rollbackSyntax": {
+      "write": "executable and sh -n passed",
+      "review": "executable and sh -n passed",
+      "api": "executable and sh -n passed",
+      "agent": "executable and sh -n passed",
+      "worklog": "executable and sh -n passed",
+      "assistant": "executable and sh -n passed"
+    },
+    "assistantSource": {
+      "path": "/volume1/docker/qinian/steward-site/frontend",
+      "files": 54,
+      "byteIdentical": true
+    },
+    "assistantManifest": {
+      "inventoryExact": true,
+      "runtimeRelease": "20261016-v3-9952c66",
+      "frontendRelease": "20261016-v33-211104-3c5f9b1",
+      "runtimeContractUnchanged": true
+    },
+    "artifactFinalizedAt": "2026-10-16T21:24:41+08:00",
+    "gitPush": false,
+    "portalPublished": false
+  },
+  "consolidatedReport": "/Users/fangjialiang/Documents/家庭网络中枢项目/04_工具与运维/发布记录/20261016-v33-six-sites/REPORT.md"
+}

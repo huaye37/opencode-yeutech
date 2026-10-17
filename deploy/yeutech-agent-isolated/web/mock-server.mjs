@@ -115,6 +115,7 @@ const server = http.createServer(async (request, response) => {
   response.setHeader("content-type", "application/json");
   if (request.method === "GET" && incoming.pathname === "/api/workbench/bootstrap") {
     response.end(JSON.stringify({
+      user: { username: "lucian" },
       sessions,
       states: sessionState ? { ses_mock_history: sessionState } : {},
       permissions,

@@ -1,0 +1,154 @@
+{
+  "base": "http://127.0.0.1:18148/",
+  "browser": "Playwright Chrome headless",
+  "data": "local mock + presentation fixtures; no production/model calls",
+  "checks": [
+    {
+      "name": "1440x900 light: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":900}"
+    },
+    {
+      "name": "1440x900 dark: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":900}"
+    },
+    {
+      "name": "2560x1440 light: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":1440}"
+    },
+    {
+      "name": "2560x1440 dark: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":1440}"
+    },
+    {
+      "name": "390x844 light: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"34px\",\"15px\",\"17px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":844}"
+    },
+    {
+      "name": "mobile detail light: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"17px\",\"0px\",\"15px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":844}"
+    },
+    {
+      "name": "mobile file detail light: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"17px\",\"0px\",\"15px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":844}"
+    },
+    {
+      "name": "mobile light: directory -> conversation -> files -> return",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "390x844 dark: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"34px\",\"15px\",\"17px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":844}"
+    },
+    {
+      "name": "mobile detail dark: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"17px\",\"0px\",\"15px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":844}"
+    },
+    {
+      "name": "mobile file detail dark: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"17px\",\"0px\",\"15px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":844}"
+    },
+    {
+      "name": "mobile dark: directory -> conversation -> files -> return",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "session/project search and shared directory",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "session rename/Fork/delete entries preserved",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "Ultra / Ultrafast independent persistence",
+      "status": "pass",
+      "detail": "real local mock preference API; reload readback"
+    },
+    {
+      "name": "capabilities, skills/profiles and plugin entry",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "control center / goal create / advanced budget & context",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "files search / Markdown preview / expand & restore / attach",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "Markdown export preserved",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "focus, sidebar collapse and keyboard resizing",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "portal brand/account/settings and keyboard menu",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "appearance square-min: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":900}"
+    },
+    {
+      "name": "accessibility square-min: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":900}"
+    },
+    {
+      "name": "appearance max: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":900}"
+    },
+    {
+      "name": "accessibility max: page/layout/type audit",
+      "status": "pass",
+      "detail": "{\"overflow\":false,\"fonts\":[\"13px\",\"15px\",\"22px\"],\"wallpaper\":\"none\",\"stage\":\"none\",\"height\":900}"
+    },
+    {
+      "name": "no console or page errors",
+      "status": "pass",
+      "detail": ""
+    }
+  ],
+  "screenshots": [
+    "1440x900-light.png",
+    "1440x900-dark.png",
+    "2560x1440-light.png",
+    "2560x1440-dark.png",
+    "390x844-light.png",
+    "390x844-light-conversation.png",
+    "390x844-light-files.png",
+    "390x844-dark.png",
+    "390x844-dark-conversation.png",
+    "390x844-dark-files.png",
+    "1440x900-light-control.png",
+    "1440x900-light-files.png",
+    "1440x900-square-min-accessibility.png",
+    "1440x900-max-accessibility.png"
+  ],
+  "errors": []
+}

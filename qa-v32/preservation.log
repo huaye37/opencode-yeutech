@@ -1,0 +1,81 @@
+[
+  {
+    "file": "workbench-bootstrap.js",
+    "originalLines": [
+      1241,
+      1337
+    ],
+    "bodyByteIdentical": true
+  },
+  {
+    "file": "use-projection-events.js",
+    "originalLines": [
+      1450,
+      1623
+    ],
+    "bodyByteIdentical": true
+  },
+  {
+    "file": "workbench-actions.js",
+    "originalLines": [
+      1624,
+      2046
+    ],
+    "bodyByteIdentical": true
+  },
+  {
+    "file": "api.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "attachment-state.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "markdown-parser.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "message-projection.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "message-scroll.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "project-file-reference.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "session-ordering.js",
+    "byteIdentical": true
+  },
+  {
+    "file": "portal-appearance.js",
+    "byteIdentical": true
+  }
+]
+{
+  "baseline": "385702dd5",
+  "branch": "v3/apple-redesign",
+  "scope": "custom web presentation + qa-v32 only",
+  "modifiedCodeFilesUnder600Lines": true,
+  "contracts": [
+    {
+      "file": "yeutech-material-contract.css",
+      "canonicalByteIdentical": true,
+      "sha256": "bdcc88eebe68f537c8b4612b2f71319199c58fed484290f82f1ad8b926df5dba"
+    },
+    {
+      "file": "yeutech-material-contract.mjs",
+      "canonicalByteIdentical": true,
+      "sha256": "9339a26353b05cc9c2f85acf4e3dddc06680e5be19891df5076053a07b5f6715"
+    },
+    {
+      "file": "yeutech-material-contract.d.mts",
+      "canonicalByteIdentical": true,
+      "sha256": "cf17586c80fcbf064547ddc329dfd9de899d1ce34e081cf03027cc047a890106"
+    }
+  ]
+}

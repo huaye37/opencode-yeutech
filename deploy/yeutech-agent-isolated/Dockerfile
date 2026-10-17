@@ -27,11 +27,12 @@ RUN set -eu; \
 
 FROM node:24-bookworm-slim
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl openssl \
+  && apt-get install -y --no-install-recommends ca-certificates curl openssl openssh-client \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json ./
 COPY src/ ./src/
+COPY config/ ./config/
 COPY scripts/container-entrypoint.sh ./scripts/container-entrypoint.sh
 COPY --from=web-builder /build/web/dist ./web/dist
 COPY --from=opencode-downloader /download/opencode /usr/local/bin/opencode
