@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 const sessions = [{ id: "ses_mock_history", title: "长会话性能验证", model: { modelID: "gpt-6.1-sol" } }];
 const messageCount = Number(process.env.YEUTECH_MOCK_MESSAGE_COUNT ?? 2);
+let rejectPromptOnce = process.env.YEUTECH_MOCK_PROMPT_FAILURE_ONCE === "1";
 const messages = Array.from({ length: messageCount }, (_, index) => ({
   info: {
     id: `msg_mock_${index + 1}`,
@@ -314,6 +315,12 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   if (request.method === "POST" && request.url.includes("/prompt_async")) {
+    if (rejectPromptOnce) {
+      rejectPromptOnce = false;
+      response.writeHead(503);
+      response.end(JSON.stringify({ error: { code: "workbench_updating", message: "隔离验收：暂时无法提交，请保留输入重试" } }));
+      return;
+    }
     sessionState = { type: "busy", message: "正在执行 Mock 任务" };
     broadcast({ type: "session.status", properties: { sessionID: "ses_mock_history", status: sessionState } });
     broadcastProjection("ephemeral", { cursor: durableProjection("ses_mock_history").length, data: { type: "message.part.updated", properties: { sessionID: "ses_mock_history", part: { type: "text", messageID: "msg_mock_stream", delta: "Mock 流式输出" } } } });

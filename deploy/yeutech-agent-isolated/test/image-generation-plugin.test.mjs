@@ -135,7 +135,6 @@ test("xAI rejects undeclared quality before generation and permits a corrected r
     assert.equal(generations, 1);
   } finally { await server.close(); }
 });
-
 test("downloads HTTPS image URLs with a bounded response and validates WebP", async () => {
   const calls = [];
   const plugin = createImageGenerationPlugin({

@@ -128,10 +128,17 @@ export function Conversation({ session, project, messages, permissions, insight,
     submittedDraftRef.current = value;
     suppressSubmittedInputUntilRef.current = performance.now() + 300;
     setDraft("");
-    window.requestAnimationFrame(() => setDraft(""));
+    const clearFrame = window.requestAnimationFrame(() => {
+      if (submittedDraftRef.current === value) setDraft((current) => current.trim() === value ? "" : current);
+    });
     nearMessageBottomRef.current = true;
-    const sent = await onSend(value, attachments);
-    if (sent) setUploads([]);
+    const result = await onSend(value, attachments);
+    window.cancelAnimationFrame(clearFrame);
+    if (result.sent) setUploads([]);
+    else if (renderedSessionRef.current === result.sessionID && submittedDraftRef.current === value) {
+      suppressSubmittedInputUntilRef.current = 0;
+      setDraft((current) => current || value);
+    }
   };
   const enqueueUploads = (fileList) => {
     const files = [...(fileList || [])];
