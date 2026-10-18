@@ -1649,3 +1649,13 @@ test("permission receipt does not invent execution or sandbox proof", () => {
   assert.equal(denied.scope.web, "deny");
   assert.deepEqual(denied.disabledTools, ["webfetch"]);
 });
+
+test("permission receipt compares effective appended worker rules, not stale batches", () => {
+  const oldRules = sessionPermissionRules("full", { webfetch: false });
+  const rules = [...oldRules, ...sessionPermissionRules("smart")];
+  const receipt = permissionPolicyReceipt("smart", { permission: rules }, null);
+  assert.equal(receipt.runtimeMatchesRequest, true);
+  assert.equal(receipt.scope.web, "ask");
+  assert.deepEqual(receipt.disabledTools, []);
+  assert.equal(permissionPolicyReceipt("ask", { permission: rules }, null).runtimeMatchesRequest, false);
+});

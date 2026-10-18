@@ -74,18 +74,20 @@ export function sessionPermissionRules(mode = "smart", toolPolicy = {}) {
 }
 export function permissionPolicyReceipt(mode, session, status, expectedRules) {
   const rules = Array.isArray(session?.permission) ? session.permission : null;
+  // OpenCode PATCH appends rules. The last global wildcard supersedes older batches.
+  const effectiveRules = rules?.slice(Math.max(0, rules.findLastIndex((rule) => rule.permission === "*" && rule.pattern === "*")));
   const action = (permission) => rules?.findLast((rule) => (rule.permission === permission || rule.permission === "*") && rule.pattern === "*")?.action || "unknown";
   return {
     requestedMode: mode,
     observedAt: Date.now(),
     runtimeSource: rules ? "worker-session-readback" : "unavailable",
-    runtimeMatchesRequest: rules ? JSON.stringify(rules) === JSON.stringify(expectedRules || sessionPermissionRules(mode, Object.fromEntries(rules.filter((rule) => rule.action === "deny" && rule.permission !== "external_directory").map((rule) => [rule.permission, false])))) : null,
+    runtimeMatchesRequest: rules ? JSON.stringify(effectiveRules) === JSON.stringify(expectedRules || sessionPermissionRules(mode, Object.fromEntries(effectiveRules.filter((rule) => rule.action === "deny" && rule.permission !== "external_directory").map((rule) => [rule.permission, false])))) : null,
     activeTask: status === undefined ? "unknown" : Boolean(status && status.type !== "idle"),
     effectiveFrom: "next-request",
     currentTaskChanged: false,
     rules,
     scope: { filesRead: action("read"), filesWrite: action("edit"), commands: action("bash"), web: action("webfetch"), externalDirectory: action("external_directory") },
-    disabledTools: rules?.filter((rule) => rule.action === "deny" && rule.permission !== "external_directory").map((rule) => rule.permission) || [],
+    disabledTools: effectiveRules?.filter((rule) => rule.action === "deny" && rule.permission !== "external_directory").map((rule) => rule.permission) || [],
     boundary: "仅当前用户授权工作区；模式不扩大宿主机、挂载或插件权限。外网按工具审批规则，命令内网络仍由运行环境约束；这不是网络沙箱证明。",
   };
 }
