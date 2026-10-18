@@ -5,7 +5,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createAgentBff, sessionPermissionRules } from "../src/agent-bff.mjs";
+import { createAgentBff, sessionPermissionRules, permissionPolicyReceipt } from "../src/agent-bff.mjs";
 import { readActivityLease, reserveActivityLease } from "../src/activity-lease.mjs";
 import { createProjectionEventStore } from "../src/projection-event-store.mjs";
 
@@ -931,17 +931,18 @@ test("maps workbench permission modes to bounded OpenCode session rules", () => 
   for (const rules of [ask, smart, full]) assert.equal(rules.at(-1).permission, "external_directory");
 });
 
-test("applies full access immediately and clears existing permission prompts for the session", async () => {
+test("saves permission policy with worker readback without approving pending operations", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-permission-mode-"));
   const databasePath = path.join(root, "control.sqlite");
   let forwardedRules = null;
+  let active = false;
   const replies = [];
   try {
     await withBff(async (request, response) => {
       const pathname = new URL(request.url, "http://127.0.0.1").pathname;
       if (request.method === "GET" && pathname === "/session/ses_full") {
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ id: "ses_full", title: "Full access", directory: root }));
+        response.end(JSON.stringify({ id: "ses_full", title: "Full access", directory: root, permission: forwardedRules }));
         return;
       }
       if (request.method === "PATCH" && pathname === "/session/ses_full") {
@@ -950,6 +951,11 @@ test("applies full access immediately and clears existing permission prompts for
         forwardedRules = JSON.parse(Buffer.concat(chunks).toString("utf8")).permission;
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify({ id: "ses_full", directory: root }));
+        return;
+      }
+      if (request.method === "GET" && pathname === "/session/status") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(active ? { ses_full: { type: "busy" } } : {}));
         return;
       }
       if (request.method === "GET" && pathname === "/permission") {
@@ -980,11 +986,24 @@ test("applies full access immediately and clears existing permission prompts for
       assert.equal(response.status, 200);
       const payload = await response.json();
       assert.equal(payload.data.permissionMode, "full");
-      assert.equal(payload.data.clearedPermissions, 2);
+      assert.equal(payload.data.clearedPermissions, 0);
+      assert.equal(payload.data.saved, true);
+      assert.equal(payload.data.permissionPolicy.runtimeMatchesRequest, true);
+      assert.equal(payload.data.permissionPolicy.scope.externalDirectory, "deny");
+      assert.equal(payload.data.permissionPolicy.effectiveFrom, "next-request");
       assert.equal(forwardedRules.findLast((rule) => rule.permission === "*").action, "allow");
       assert.equal(forwardedRules.at(-1).permission, "external_directory");
-      assert.deepEqual(replies.map((item) => item.pathname).sort(), ["/permission/per_one/reply", "/permission/per_two/reply"]);
-      assert.ok(replies.every((item) => item.body.reply === "always"));
+      assert.deepEqual(replies, []);
+      active = true;
+      const saved = await fetch(`${baseURL}/api/workbench/sessions/ses_full/permission-mode`, {
+        method: "PATCH", headers: { ...identityHeaders(), "content-type": "application/json" }, body: JSON.stringify({ permissionMode: "ask" }),
+      }).then((result) => result.json());
+      assert.equal(saved.data.permissionMode, "ask");
+      assert.equal(saved.data.permissionPolicy.activeTask, true);
+      assert.equal(saved.data.permissionPolicy.currentTaskChanged, false);
+      assert.equal(saved.data.permissionPolicy.runtimeMatchesRequest, false);
+      assert.equal(forwardedRules[0].action, "allow");
+      assert.deepEqual(replies, []);
     }, {
       users: [{ portalUserId: 3, username: "ryan", workspace: root }],
       controlPlaneDatabasePath: databasePath,
@@ -1618,4 +1637,15 @@ test("serves the built workbench and forwards same-origin migration routes", asy
     await close(migration);
     await rm(webRoot, { recursive: true });
   }
+});
+
+test("permission receipt does not invent execution or sandbox proof", () => {
+  const unknown = permissionPolicyReceipt("smart", {}, undefined);
+  assert.equal(unknown.runtimeMatchesRequest, null);
+  assert.equal(unknown.scope.web, "unknown");
+  assert.equal(unknown.activeTask, "unknown");
+  const rules = sessionPermissionRules("ask", { webfetch: false });
+  const denied = permissionPolicyReceipt("ask", { permission: rules }, null, rules);
+  assert.equal(denied.scope.web, "deny");
+  assert.deepEqual(denied.disabledTools, ["webfetch"]);
 });

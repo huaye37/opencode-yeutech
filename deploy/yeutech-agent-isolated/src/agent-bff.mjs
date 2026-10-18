@@ -72,6 +72,23 @@ export function sessionPermissionRules(mode = "smart", toolPolicy = {}) {
   rules.push({ permission: "external_directory", pattern: "*", action: "deny" });
   return rules;
 }
+export function permissionPolicyReceipt(mode, session, status, expectedRules) {
+  const rules = Array.isArray(session?.permission) ? session.permission : null;
+  const action = (permission) => rules?.findLast((rule) => (rule.permission === permission || rule.permission === "*") && rule.pattern === "*")?.action || "unknown";
+  return {
+    requestedMode: mode,
+    observedAt: Date.now(),
+    runtimeSource: rules ? "worker-session-readback" : "unavailable",
+    runtimeMatchesRequest: rules ? JSON.stringify(rules) === JSON.stringify(expectedRules || sessionPermissionRules(mode, Object.fromEntries(rules.filter((rule) => rule.action === "deny" && rule.permission !== "external_directory").map((rule) => [rule.permission, false])))) : null,
+    activeTask: status === undefined ? "unknown" : Boolean(status && status.type !== "idle"),
+    effectiveFrom: "next-request",
+    currentTaskChanged: false,
+    rules,
+    scope: { filesRead: action("read"), filesWrite: action("edit"), commands: action("bash"), web: action("webfetch"), externalDirectory: action("external_directory") },
+    disabledTools: rules?.filter((rule) => rule.action === "deny" && rule.permission !== "external_directory").map((rule) => rule.permission) || [],
+    boundary: "仅当前用户授权工作区；模式不扩大宿主机、挂载或插件权限。外网按工具审批规则，命令内网络仍由运行环境约束；这不是网络沙箱证明。",
+  };
+}
 const HOP_BY_HOP_HEADERS = new Set(["connection", "content-length", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
 const STATIC_ROUTES = new Map([
   ["GET /global/health", true], ["GET /event", true], ["GET /session", true], ["POST /session", true],
@@ -829,6 +846,7 @@ export function createAgentBff(options) {
       session: {
         id: session.id, title: session.title || "新会话", status: sessionState,
         permissionMode: sessionPolicyStore?.get(worker.portalUserId, sessionID) || "smart",
+        permissionPolicy: permissionPolicyReceipt(sessionPolicyStore?.get(worker.portalUserId, sessionID) || "smart", session, sessionState),
         ...(sessionState === null && durableSession?.error ? { error: durableSession.error } : {}),
       },
       messages: projection.messages, inbox, permissions: (permissions || []).filter((item) => item.sessionID === sessionID), children: children || [], childTree: projection.childTree, plan: todos || [],
@@ -1552,25 +1570,18 @@ export function createAgentBff(options) {
         const project = projects.find((item) => path.resolve(worker.workspace, item.workspaceDirectory) === path.resolve(located.directory));
         const pluginScope = project ? `project:${project.id}` : "workspace";
         const pluginToolPolicy = pluginManager ? pluginManager.toolPolicy(identity.user.portalUserId, pluginScope) : {};
-        await workerRequest(worker, `/session/${sessionID}`, {
-          method: "PATCH",
-          body: { permission: sessionPermissionRules(permissionMode, pluginToolPolicy) },
-          directory: located.directory,
+        const rules = sessionPermissionRules(permissionMode, pluginToolPolicy);
+        const states = await workerRequest(worker, "/session/status", { directory: located.directory });
+        const active = states?.[sessionID];
+        // A mode selector never approves pending operations or rewrites an active task.
+        if (!active || active.type === "idle") await workerRequest(worker, `/session/${sessionID}`, {
+          method: "PATCH", body: { permission: rules }, directory: located.directory,
         });
         sessionPolicyStore.set(identity.user.portalUserId, sessionID, permissionMode);
-        let clearedPermissions = 0;
-        if (permissionMode === "full") {
-          const pending = await workerRequest(worker, "/permission", { directory: located.directory });
-          const matching = (pending || []).filter((item) => item?.sessionID === sessionID && /^per_[A-Za-z0-9]+$/.test(String(item?.id || "")));
-          const replies = await Promise.allSettled(matching.map((item) => workerRequest(worker, `/permission/${item.id}/reply`, {
-            method: "POST",
-            body: { reply: "always" },
-            directory: located.directory,
-          })));
-          clearedPermissions = replies.filter((item) => item.status === "fulfilled").length;
-        }
+        const readback = await workerRequest(worker, `/session/${sessionID}`, { directory: located.directory });
+        const permissionPolicy = permissionPolicyReceipt(permissionMode, readback, active || null, rules);
         response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
-        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { sessionId: sessionID, permissionMode, clearedPermissions } }));
+        response.end(JSON.stringify({ contractVersion: PORTAL_CONTRACT_VERSION, data: { sessionId: sessionID, permissionMode, saved: true, clearedPermissions: 0, permissionPolicy } }));
         return;
       }
       if (sessionMutationRoute && request.method === "PATCH") {
@@ -1860,7 +1871,7 @@ export function createAgentBff(options) {
             throw Object.assign(new Error("Prompt body must be valid JSON"), { statusCode: 400 });
           }
           const workload = String(promptPayload?.yeutech?.workload || "general-agent");
-          const permissionMode = PERMISSION_MODES.has(promptPayload?.yeutech?.permissionMode) ? promptPayload.yeutech.permissionMode : "smart";
+          const permissionMode = PERMISSION_MODES.has(promptPayload?.yeutech?.permissionMode) ? promptPayload.yeutech.permissionMode : sessionPolicyStore?.get(identity.user.portalUserId, incoming.pathname.split("/")[4]) || "smart";
           const allModels = await executableModels(worker.modelConfigPath, workload, { fresh: true });
           const capability = allModels.find((model) => model.id === requestedModel);
           const policy = await consumerModelPolicy();

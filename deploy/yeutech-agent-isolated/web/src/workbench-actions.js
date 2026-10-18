@@ -195,14 +195,15 @@ export function createWorkbenchActions({ messageCursors, selected, loadingOlder,
     const previous = permissionMode;
     setPermissionMode(value);
     try { window.localStorage.setItem(PERMISSION_MODE_STORAGE_KEY, value); } catch { /* Preference persistence is optional. */ }
-    if (!activeRuntimeID) return;
-    setStatus(value === "full" ? "正在为当前任务启用完全访问…" : "正在更新当前任务权限…");
+    if (!activeRuntimeID) { setStatus("已选择下次请求权限；发送后由执行端确认。"); return; }
+    setStatus("正在保存下次请求权限…");
     try {
       const result = await workbenchApi.updateSessionPermission(activeRuntimeID, value);
-      if (value === "full") setPermissions((current) => current.filter((request) => request.sessionID !== activeRuntimeID));
-      setStatus(value === "full"
-        ? `当前任务已启用完全访问${result?.data?.clearedPermissions ? `，并处理 ${result.data.clearedPermissions} 个待确认操作` : ""}。`
-        : value === "smart" ? "当前任务已启用智能批准。" : "当前任务已改为逐项请求批准。");
+      const receipt = result?.data?.permissionPolicy;
+      setInsightsBySession((all) => ({ ...all, [selected]: { ...all[selected], session: { ...all[selected]?.session, permissionMode: value, permissionPolicy: receipt } } }));
+      setStatus(receipt?.activeTask
+        ? "已保存，供下次请求使用；当前活动任务及待审批操作未改变。"
+        : receipt?.runtimeMatchesRequest ? "已保存并由执行端回读确认；下次请求使用此策略。" : "请求配置已保存；执行端规则未确认一致，发送前将重新下发。");
     } catch (error) {
       setPermissionMode(previous);
       try { window.localStorage.setItem(PERMISSION_MODE_STORAGE_KEY, previous); } catch { /* Preference persistence is optional. */ }

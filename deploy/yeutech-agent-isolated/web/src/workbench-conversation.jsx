@@ -231,6 +231,14 @@ export function Conversation({ session, project, messages, permissions, insight,
     <div className={`composer-wrap ${dragActive ? "drag-active" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragActive(false); }} onDrop={dropFiles}>
       <div className="composer-upload-queue"><UploadQueue items={uploads} onCancel={cancelUpload} onRetry={retryUpload} /></div>
       {attachments.length ? <div className="attached-files" aria-label="已附加文件">{attachments.map((item) => <span key={item.workspacePath || `${fileSpaceKey(item.space)}:${item.path}`}><Icon name="paperclip" size={13} /><b>{item.workspacePath || item.path}</b><button aria-label={`从本轮移除引用 ${item.name || item.path}`} onClick={() => void onRemoveAttachment(item)}>×</button></span>)}</div> : null}
+      <details className="permission-policy" aria-label="权限实际范围与生效回执">
+        <summary>权限范围 · {insight?.session?.permissionPolicy?.runtimeSource === "worker-session-readback" ? "执行端已回读" : "执行端尚未确认"} · 下次请求</summary>
+        {insight?.session?.permissionPolicy ? <>
+          <p>请求配置：{({ ask: "请求批准", smart: "帮我批准", full: "完全访问" })[insight.session.permissionPolicy.requestedMode]}；执行端会话规则{insight.session.permissionPolicy.runtimeMatchesRequest ? "一致" : "未确认一致"}。{insight.session.permissionPolicy.activeTask ? "当前活动任务不变；待审批须单独确认。" : "当前无活动任务；不代表已有任务快照已改变。"}</p>
+          <p>{Object.entries({ filesRead: "文件读取", filesWrite: "文件修改", commands: "命令", web: "网页工具", externalDirectory: "工作区外目录" }).map(([key, label]) => `${label}：${({ allow: "允许", ask: "请求批准", deny: "禁止", unknown: "未确认" })[insight.session.permissionPolicy.scope[key]] || "未确认"}`).join(" · ")}</p>
+          <p>停用工具：{insight.session.permissionPolicy.disabledTools.join("、") || "无会话级停用记录（插件仍受自身开关与权限约束）"}</p><p>{insight.session.permissionPolicy.boundary}</p>
+        </> : <p>尚未从执行端读取会话策略；这里只是下次请求的配置，不代表实际执行权限。</p>}
+      </details>
       <div className="composer glass-control">
         {dragActive ? <div className="composer-drop-hint">松开即上传到当前会话</div> : null}
         <textarea aria-label="向 Agent 发送消息" value={draft} onChange={(event) => { const next = event.target.value; if (performance.now() < suppressSubmittedInputUntilRef.current && next.trim() === submittedDraftRef.current) return; setDraft(next); }} onPaste={pasteFiles} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={() => { composingRef.current = false; suppressImeEnterUntilRef.current = performance.now() + 120; }} onKeyDown={(event) => { const imeConfirming = composingRef.current || event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229 || performance.now() < suppressImeEnterUntilRef.current; if (event.key === "Enter" && !event.shiftKey && !imeConfirming) { event.preventDefault(); void submit(); } }} placeholder={running ? "输入补充要求，发送后继续当前任务…" : "描述任务，或拖入、粘贴、选择任意文件…"} />
@@ -242,7 +250,7 @@ export function Conversation({ session, project, messages, permissions, insight,
           <div className="model-preferences">
           <select aria-label="推理强度" value={reasoningEffort} disabled={!models.find(item => item.id === model)?.reasoningEfforts?.length} onChange={event => onReasoningEffortChange(event.target.value)}><option value="">模型默认</option>{(models.find(item => item.id === model)?.reasoningEfforts || []).map(level => <option key={level} value={level}>{({minimal:"最少",low:"低",medium:"中",high:"高",xhigh:"超高",max:"最大",ultra:"极高"})[level] || level}</option>)}</select>
           <select aria-label="响应速度" value={serviceTier} disabled={!models.find(item => item.id === model)?.serviceTiers?.length} onChange={event => onServiceTierChange(event.target.value)}><option value="">标准</option>{(models.find(item => item.id === model)?.serviceTiers || []).map(tier => <option key={tier} value={tier}>{tier === "ultrafast" ? "Ultrafast" : "Fast"}</option>)}</select>
-          <select aria-label="权限模式" value={permissionMode} onChange={(event) => onPermissionModeChange(event.target.value)} title="控制 Agent 在当前用户工作区内的操作审批"><option value="ask">请求批准</option><option value="smart">帮我批准</option><option value="full">完全访问</option></select>
+          <select aria-label="权限模式" value={permissionMode} onChange={(event) => onPermissionModeChange(event.target.value)} title="选择下次请求的审批策略，不改变活动任务或代替待审批确认"><option value="ask">请求批准</option><option value="smart">帮我批准</option><option value="full">完全访问</option></select>
           </div>
           <div className="composer-spacer" />
           {selectedCapability && !selectedCapability.selectable ? <span className="model-warning" title={selectedCapability.disabledReason}>能力待补全</span> : null}
