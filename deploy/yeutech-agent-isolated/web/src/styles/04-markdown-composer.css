@@ -199,6 +199,13 @@
 
 /* ---------- Composer ---------- */
 
+.permission-policy > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
+}
+
 .composer-wrap {
   flex: 0 0 auto;
   padding: 8px 24px 14px;
