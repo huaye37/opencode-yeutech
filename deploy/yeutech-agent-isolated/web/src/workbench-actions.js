@@ -3,7 +3,7 @@ import { removeDeletedAttachmentReferences } from "./attachment-state.js";
 import { projectFilePath } from "./project-file-reference.js";
 import { PERMISSION_MODE_STORAGE_KEY, timestampPermissions, isHistoricalConversation, attachmentIdentity, attachmentFileIdentity } from "./workbench-helpers.js";
 
-export function createWorkbenchActions({ messageCursors, selected, loadingOlder, setLoadingOlder, bufferedOlderMessagesRef, setMessagesBySession, setMessageCursors, pollVersion, model, setStandaloneSessions, setSelected, setSelectedProject, setFilePanelOpen, setRunning, updateRunningSession, setStopping, setStatus, setConversations, setExpandedProjects, setProjectMutationBusy, setProjectMutationError, setProjects, setProjectDialogOpen, setDiscoveryBusyProjectId, setDiscoveryError, runningSessionIds, conversations, session, runtimeSessions, setRuntimeSessions, setReasoningPreferences, setServiceTierPreferences, project, setRunningSessionIds, preserveAttachmentsOnNextSelection, setAttachments, setRuntimeEnabledSessions, permissionMode, reasoningEffort, serviceTier, stopping, reconcileRef, setPermissions, activeRuntimeID, setPermissionMode, standaloneSessions, setDiffOpen, setDiffLoading, setDiffError, setDiffItems, setFilePanelProjectId, setFilePanelRequest, setSidebarOpen, setFocusMode, setCapabilityOpen, setCapabilityLoading, setCapabilityError, setProfiles, setSkills, setSkillReport, setPluginOpen, setPluginLoading, setPluginError, setPlugins, setInsightsBySession, setControlOpen, messages }) {
+export function createWorkbenchActions({ messageCursors, selected, loadingOlder, setLoadingOlder, bufferedOlderMessagesRef, setMessagesBySession, setMessageCursors, pollVersion, model, setStandaloneSessions, setSelected, setSelectedProject, setFilePanelOpen, setRunning, updateRunningSession, setStopping, setStatus, setConversations, setExpandedProjects, setProjectMutationBusy, setProjectMutationError, setProjects, setProjectDialogOpen, setDiscoveryBusyProjectId, setDiscoveryError, runningSessionIds, conversations, session, runtimeSessions, setRuntimeSessions, setReasoningPreferences, setServiceTierPreferences, project, setRunningSessionIds, preserveAttachmentsOnNextSelection, setAttachments, setRuntimeEnabledSessions, permissionMode, reasoningEffort, serviceTier, stopping, reconcileRef, setPermissions, activeRuntimeID, knownRuntimeID, setPermissionMode, standaloneSessions, setDiffOpen, setDiffLoading, setDiffError, setDiffItems, setFilePanelProjectId, setFilePanelRequest, setSidebarOpen, setFocusMode, setCapabilityOpen, setCapabilityLoading, setCapabilityError, setProfiles, setSkills, setSkillReport, setPluginOpen, setPluginLoading, setPluginError, setPlugins, setInsightsBySession, setControlOpen, messages }) {
   const loadOlder = async () => {
     const cursor = messageCursors[selected];
     if (!cursor || loadingOlder) return;
@@ -195,10 +195,11 @@ export function createWorkbenchActions({ messageCursors, selected, loadingOlder,
     const previous = permissionMode;
     setPermissionMode(value);
     try { window.localStorage.setItem(PERMISSION_MODE_STORAGE_KEY, value); } catch { /* Preference persistence is optional. */ }
-    if (!activeRuntimeID) { setStatus("已选择下次请求权限；发送后由执行端确认。"); return; }
+    const permissionSessionID = activeRuntimeID || knownRuntimeID;
+    if (!permissionSessionID) { setStatus("已选择下次请求权限；发送后由执行端确认。"); return; }
     setStatus("正在保存下次请求权限…");
     try {
-      const result = await workbenchApi.updateSessionPermission(activeRuntimeID, value);
+      const result = await workbenchApi.updateSessionPermission(permissionSessionID, value);
       const receipt = result?.data?.permissionPolicy;
       setInsightsBySession((all) => ({ ...all, [selected]: { ...all[selected], session: { ...all[selected]?.session, permissionMode: value, permissionPolicy: receipt } } }));
       setStatus(receipt?.activeTask

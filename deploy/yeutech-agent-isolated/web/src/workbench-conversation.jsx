@@ -232,9 +232,9 @@ export function Conversation({ session, project, messages, permissions, insight,
       <div className="composer-upload-queue"><UploadQueue items={uploads} onCancel={cancelUpload} onRetry={retryUpload} /></div>
       {attachments.length ? <div className="attached-files" aria-label="已附加文件">{attachments.map((item) => <span key={item.workspacePath || `${fileSpaceKey(item.space)}:${item.path}`}><Icon name="paperclip" size={13} /><b>{item.workspacePath || item.path}</b><button aria-label={`从本轮移除引用 ${item.name || item.path}`} onClick={() => void onRemoveAttachment(item)}>×</button></span>)}</div> : null}
       <details className="permission-policy" aria-label="权限实际范围与生效回执">
-        <summary>权限范围 · {insight?.session?.permissionPolicy?.runtimeSource === "worker-session-readback" ? "执行端已回读" : "执行端尚未确认"} · 下次请求</summary>
+        <summary>权限范围 · {insight?.session?.permissionPolicy?.runtimeSource?.startsWith("worker-session-") ? "执行端已回读" : "执行端尚未确认"} · 下次请求</summary>
         {insight?.session?.permissionPolicy ? <>
-          <p>请求配置：{({ ask: "请求批准", smart: "帮我批准", full: "完全访问" })[insight.session.permissionPolicy.requestedMode]}；执行端会话规则{insight.session.permissionPolicy.runtimeMatchesRequest ? "一致" : "未确认一致"}。{insight.session.permissionPolicy.activeTask ? "当前活动任务不变；待审批须单独确认。" : "当前无活动任务；不代表已有任务快照已改变。"}</p>
+          <p>请求配置：{({ ask: "请求批准", smart: "帮我批准", full: "完全访问" })[insight.session.permissionPolicy.requestedMode]}；执行端会话规则{insight.session.permissionPolicy.runtimeMatchesRequest ? "一致" : "未确认一致"}。{insight.session.permissionPolicy.activeTask === true ? "当前活动任务不变；待审批须单独确认。" : insight.session.permissionPolicy.activeTask === false ? "当前无活动任务；不代表已有任务快照已改变。" : "活动任务状态未确认；本次配置不改变运行中的任务。"}</p>
           <p>{Object.entries({ filesRead: "文件读取", filesWrite: "文件修改", commands: "命令", web: "网页工具", externalDirectory: "工作区外目录" }).map(([key, label]) => `${label}：${({ allow: "允许", ask: "请求批准", deny: "禁止", unknown: "未确认" })[insight.session.permissionPolicy.scope[key]] || "未确认"}`).join(" · ")}</p>
           <p>停用工具：{insight.session.permissionPolicy.disabledTools.join("、") || "无会话级停用记录（插件仍受自身开关与权限约束）"}</p><p>{insight.session.permissionPolicy.boundary}</p>
         </> : <p>尚未从执行端读取会话策略；这里只是下次请求的配置，不代表实际执行权限。</p>}

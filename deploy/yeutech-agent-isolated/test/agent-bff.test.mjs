@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import http from "node:http";
+import { DatabaseSync } from "node:sqlite";
+import { createSessionPolicyStore } from "../src/session-policy-store.mjs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -307,6 +309,12 @@ test("loads the passive workbench and migration history without starting a porta
   const catalogURL = await listen(catalog);
   const migrationURL = await listen(migration);
   const controlPlaneDatabasePath = path.join(root, "control.sqlite");
+  const policies = createSessionPolicyStore(controlPlaneDatabasePath);
+  policies.set(3, "ses_passive", "ask"); policies.close();
+  const runtimeDatabasePath = path.join(root, "worker.sqlite");
+  const native = new DatabaseSync(runtimeDatabasePath);
+  native.exec("CREATE TABLE session (id TEXT, permission TEXT)");
+  native.prepare("INSERT INTO session VALUES (?, ?)").run("ses_passive", JSON.stringify([...sessionPermissionRules("full"), ...sessionPermissionRules("ask")])); native.close();
   const projections = createProjectionEventStore(controlPlaneDatabasePath);
   projections.append(3, "ses_passive", "message:msg_user", "message.upsert", { id: "msg_user", role: "user", text: "passive question", createdAt: 1 });
   projections.append(3, "ses_passive", "message:msg_assistant", "message.upsert", { id: "msg_assistant", role: "assistant", text: "passive answer", createdAt: 2 });
@@ -324,6 +332,11 @@ test("loads the passive workbench and migration history without starting a porta
       assert.deepEqual(passive.records.map((message) => message.text), ["passive question", "passive answer"]);
       assert.equal(passive.stats.turns, 1);
       assert.equal(passive.session.status, null);
+      assert.equal(passive.session.permissionMode, "ask");
+      assert.equal(passive.session.permissionPolicy.runtimeSource, "worker-session-database-readback");
+      assert.equal(passive.session.permissionPolicy.runtimeMatchesRequest, true);
+      assert.equal(passive.session.permissionPolicy.scope.filesWrite, "ask");
+      assert.equal(passive.session.permissionPolicy.scope.externalDirectory, "deny");
       assert.deepEqual(passive.artifacts, [{ id: "img_passive" }]);
       const modelPreference = await fetch(`${baseURL}/api/workbench/session-preferences/ses_passive`, {
         method: "PATCH",
@@ -346,7 +359,7 @@ test("loads the passive workbench and migration history without starting a porta
       migrationURL,
       modelCatalogURL: catalogURL,
       modelCatalogToken: "token",
-      inspectWorker: async () => ({ workspace, root, upstream: new URL("http://127.0.0.1:18199"), active: false }),
+      inspectWorker: async () => ({ workspace, root, databasePath: runtimeDatabasePath, upstream: new URL("http://127.0.0.1:18199"), active: false }),
       ensureWorker: async () => { workerStarts += 1; throw new Error("worker should remain asleep"); },
       controlPlaneDatabasePath,
       imagePluginService: { listAgentArtifacts: () => [{ id: "img_passive" }], bindSession: () => {}, close: () => {} },

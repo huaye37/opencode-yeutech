@@ -520,6 +520,21 @@ export function createAgentBff(options) {
     finally { database?.close(); }
   }
 
+  function passivePermissionPolicy(worker, sessionID) {
+    const mode = sessionPolicyStore?.get(worker.portalUserId, sessionID) || "smart";
+    const databasePath = worker?.databasePath || (worker?.root ? path.join(worker.root, "xdg", "data", "opencode", "opencode.db") : "");
+    let database;
+    try {
+      if (!databasePath) return permissionPolicyReceipt(mode, null, undefined);
+      database = new DatabaseSync(databasePath, { readOnly: true });
+      const row = database.prepare("SELECT permission FROM session WHERE id = ?").get(sessionID);
+      const rules = row?.permission ? JSON.parse(row.permission) : null;
+      const receipt = permissionPolicyReceipt(mode, { permission: rules }, worker.active === false ? null : undefined);
+      return { ...receipt, runtimeSource: rules ? "worker-session-database-readback" : "unavailable" };
+    } catch { return permissionPolicyReceipt(mode, null, undefined); }
+    finally { database?.close(); }
+  }
+
   // History must remain readable while a user's OpenCode worker is asleep.
   // The native database is the authoritative durable record; this path is
   // strictly read-only and deliberately does not call ensureWorker().
@@ -542,7 +557,7 @@ export function createAgentBff(options) {
         });
         return { info: { ...info, id: row.id, sessionID }, parts: messageParts };
       });
-      const session = { id: sessionRow.id, directory: sessionRow.directory, title: sessionRow.title, model, time: { created: sessionRow.time_created, updated: sessionRow.time_updated }, status: null };
+      const session = { permissionMode: sessionPolicyStore?.get(worker.portalUserId, sessionID) || "smart", permissionPolicy: passivePermissionPolicy(worker, sessionID), id: sessionRow.id, directory: sessionRow.directory, title: sessionRow.title, model, time: { created: sessionRow.time_created, updated: sessionRow.time_updated }, status: null };
       const projection = projectSessionPages(session, [records], { pageOrder: "oldest-first", complete: true, sessionState: null, context: { workload }, inlineToolResultLimit: options.inlineToolResultLimit });
       return { ...projection, session, permissions: [], childTree: [], plan: [], artifacts: [], evidence: [] };
     } finally { database?.close(); }
@@ -1329,8 +1344,8 @@ export function createAgentBff(options) {
       if (request.method === "GET" && passiveMessagesRoute) {
         if (!projectionStore) throw portalError("Projection history is unavailable", { statusCode: 503, code: "projection_store_unavailable", retryable: true, scope: "projection" });
         const sessionID = passiveMessagesRoute[1];
+        const dormantWorker = await inspectWorker(identity.user);
         if (imagePlugin || macCapabilityPlugin) {
-          const dormantWorker = await inspectWorker(identity.user);
           const passiveSession = dormantWorker ? passiveSessions(dormantWorker).find((item) => item.id === sessionID) : null;
           if (dormantWorker?.workspace && passiveSession) {
             const directory = path.resolve(String(passiveSession.directory || dormantWorker.workspace));
@@ -1342,7 +1357,7 @@ export function createAgentBff(options) {
         }
         const page = projectionStore.messages(identity.user.portalUserId, sessionID, incoming.searchParams.get("before"), incoming.searchParams.get("limit") || 10);
         const projection = projectionStore.latestValue(identity.user.portalUserId, sessionID, "projection") || {};
-        const session = projectionStore.latestValue(identity.user.portalUserId, sessionID, "session") || { id: sessionID, status: null };
+        const session = { ...(projectionStore.latestValue(identity.user.portalUserId, sessionID, "session") || { id: sessionID, status: null }), permissionMode: sessionPolicyStore?.get(identity.user.portalUserId, sessionID) || "smart", permissionPolicy: passivePermissionPolicy(dormantWorker || { portalUserId: identity.user.portalUserId }, sessionID) };
         const artifacts = imagePlugin ? imagePlugin.listAgentArtifacts(identity.user.portalUserId, sessionID) : [];
         response.writeHead(200, { "content-type": "application/json", "cache-control": "private, no-store" });
         const inbox = sessionInboxStore?.forSession(identity.user.portalUserId, sessionID).map(inboxMessage) || [];
