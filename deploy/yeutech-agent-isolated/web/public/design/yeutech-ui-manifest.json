@@ -1,0 +1,14 @@
+{
+  "canonical": "yeutech-home-platform/web/src/design-system",
+  "site": "agent",
+  "files": [
+    {
+      "name": "yeutech-ui-e66c8844b861.js",
+      "sha256": "e66c8844b861e4c4f69e0335936bef1f2a3d98c2b28f7eaf69003f793898ab10"
+    },
+    {
+      "name": "yeutech-ui-5e97581762cc.css",
+      "sha256": "5e97581762cca151471b9345a88cf181264bd4e6d68cfbe0b11905a297555040"
+    }
+  ]
+}
